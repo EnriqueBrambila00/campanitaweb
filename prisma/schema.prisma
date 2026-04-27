@@ -1,0 +1,122 @@
+// Configuración de conexión (ya la tienes)
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// --- TABLAS ---
+
+model Usuario {
+  id_usuario       Int              @id @default(autoincrement())
+  nombre_usuario   String           @unique @db.VarChar(50)
+  correo           String           @unique @db.VarChar(100)
+  contrasena       String           @db.VarChar(255)
+  fecha_nacimiento DateTime?        @db.Date
+  fecha_registro   DateTime         @default(now())
+  estado_cuenta    EstadoCuenta     @default(activo)
+  roles            UsuariosRoles[]
+
+  @@map("usuarios")
+}
+
+enum EstadoCuenta {
+  activo
+  suspendido
+}
+
+model Rol {
+  id_rol     Int             @id @default(autoincrement())
+  nombre_rol String          @unique @db.VarChar(50)
+  usuarios   UsuariosRoles[]
+
+  @@map("roles")
+}
+
+model UsuariosRoles {
+  id_usuario Int
+  id_rol     Int
+  usuario    Usuario @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
+  rol        Rol     @relation(fields: [id_rol], references: [id_rol], onDelete: Cascade)
+
+  @@id([id_usuario, id_rol])
+  @@map("usuarios_roles")
+}
+
+model Personaje {
+  id_personaje Int     @id @default(autoincrement())
+  nombre       String  @db.VarChar(100)
+  descripcion  String? @db.Text
+  imagen_url   String? @db.VarChar(255)
+
+  @@map("personajes")
+}
+
+model Mapa {
+  id_mapa     Int     @id @default(autoincrement())
+  nombre      String  @db.VarChar(100)
+  descripcion String? @db.Text
+  imagen_url  String? @db.VarChar(255)
+
+  @@map("mapas")
+}
+
+model RecursoVisual {
+  id_recurso  Int         @id @default(autoincrement())
+  tipo        TipoRecurso
+  titulo      String?     @db.VarChar(100)
+  descripcion String?     @db.Text
+  archivo_url String      @db.VarChar(255)
+
+  @@map("recursos_visuales")
+}
+
+enum TipoRecurso {
+  concept_art
+  textura
+  modelo_3d
+  ilustracion
+  otro
+}
+
+model Historia {
+  id_historia Int     @id @default(autoincrement())
+  titulo      String  @db.VarChar(150)
+  contenido   String  @db.Text
+  imagen_url  String? @db.VarChar(255)
+
+  @@map("historia")
+}
+
+model Noticia {
+  id_noticia        Int      @id @default(autoincrement())
+  titulo            String   @db.VarChar(150)
+  contenido         String   @db.Text
+  fecha_publicacion DateTime @default(now())
+  imagen_url        String?  @db.VarChar(255)
+
+  @@map("noticias")
+}
+
+model Galeria {
+  id_imagen   Int     @id @default(autoincrement())
+  titulo      String? @db.VarChar(100)
+  descripcion String? @db.Text
+  imagen_url  String  @db.VarChar(255)
+
+  @@map("galeria")
+}
+
+model MensajeContacto {
+  id_mensaje  Int      @id @default(autoincrement())
+  nombre      String   @db.VarChar(100)
+  correo      String   @db.VarChar(100)
+  asunto      String?  @db.VarChar(150)
+  mensaje     String   @db.Text
+  fecha_envio DateTime @default(now())
+
+  @@map("mensajes_contacto")
+}
