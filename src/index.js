@@ -1,9 +1,10 @@
 const express = require('express');
+const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
 
 const app = express();
 
-// Inicializamos Prisma pasándole la URL directa (por el cambio en la versión 7)
+
 const prisma = new PrismaClient({
   adapter: null // Le decimos explícitamente que no usamos un adaptador externo (como PGLite o PlanetScale), sino la conexión estándar a Aiven.
 });
