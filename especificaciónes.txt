@@ -1,1 +1,2 @@
 aiven.io #hosteo de la base, está logeado con mi git(Enrique)
+render.com para el hosteo de la web
