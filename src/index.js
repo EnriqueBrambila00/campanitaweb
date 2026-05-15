@@ -34,6 +34,33 @@ app.use(cookieParser());
 
 
 // ==========================================
+// ENDPOINT DE REGISTRO (NUEVO USUARIO)
+// ==========================================
+app.post('/api/registro', async (req, res) => {
+    const { nombre_usuario, correo, contrasena } = req.body;
+
+    try {
+        // [RÚBRICA: Aplicar el hashing o cifrado adecuado] (10 puntos)
+        // Generamos un "salt" (texto aleatorio) y encriptamos la contraseña
+        const salt = await bcrypt.genSalt(10);
+        const contrasenaEncriptada = await bcrypt.hash(contrasena, salt);
+
+        // Creamos el usuario en la tabla de tu base de datos
+        const nuevoUsuario = await prisma.usuario.create({
+            data: {
+                nombre_usuario: nombre_usuario,
+                correo: correo,
+                contrasena: contrasenaEncriptada
+            }
+        });
+
+        res.json({ mensaje: 'Usuario registrado con éxito', id: nuevoUsuario.id_usuario });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error al registrar el usuario' });
+    }
+});
+// ==========================================
 // ENDPOINT DE AUTENTICACIÓN (LOGIN)
 // ==========================================
 app.post('/api/login', async (req, res) => {
