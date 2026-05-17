@@ -23,7 +23,9 @@ app.use(helmet());
 app.use(cors({
     // IMPORTANTE: Para hacer pruebas en tu computadora, cambia esto a 'http://localhost:5173' temporalmente. 
     // Cuando lo subas a Render, pones la URL de tu frontend.
-    origin: 'http://localhost:5173', 
+    origin: ['http://localhost:5173', 
+            'https://campanitaweb.onrender.com'],
+
     credentials: true
 }));
 
