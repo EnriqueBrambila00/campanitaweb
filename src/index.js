@@ -107,6 +107,70 @@ app.post('/api/login', async (req, res) => {
         res.status(500).json({ error: 'Error del servidor al iniciar sesión' });
     }
 });
+// ==========================================
+// MIDDLEWARES DE AUTENTICACIÓN Y ROLES
+// ==========================================
+
+// [RÚBRICA: Utilización de tokens para autenticación (JWT)] (10 puntos) - Verificación de lectura
+const verificarAdmin = async (req, res, next) => {
+    try {
+        // 1. Buscamos el token en las cookies seguras
+        const token = req.cookies.auth_token;
+        
+        if (!token) {
+            return res.status(401).json({ error: 'Acceso denegado. Debes iniciar sesión.' });
+        }
+
+        // 2. Verificamos la firma digital del token
+        const decodificado = jwt.verify(token, process.env.JWT_SECRET);
+        
+        // 3. Buscamos al usuario usando la estructura exacta de tu schema.prisma
+        const usuario = await prisma.usuario.findUnique({
+            where: { id_usuario: decodificado.id_usuario },
+            include: {
+                roles: {       // Entramos a la tabla intermedia (UsuariosRoles)
+                    include: {
+                        rol: true  // Traemos el nombre del rol desde la tabla Rol
+                    }
+                }
+            }
+        });
+
+        if (!usuario) {
+            return res.status(401).json({ error: 'Usuario no encontrado.' });
+        }
+
+        // 4. Revisamos si dentro de sus roles tiene el de 'admin'
+        const esAdmin = usuario.roles.some(
+            (asignacion) => asignacion.rol.nombre_rol === 'admin'
+        );
+
+        if (!esAdmin) {
+            return res.status(403).json({ error: 'Acceso denegado. Área exclusiva para Administradores.' });
+        }
+
+        // 5. Si es admin, le abrimos la puerta
+        req.usuario = usuario;
+        next(); 
+
+    } catch (error) {
+        console.error("Error en el middleware:", error);
+        res.status(401).json({ error: 'Token inválido o expirado. Vuelve a iniciar sesión.' });
+    }
+};
+
+// ==========================================
+// RUTA PROTEGIDA DE PRUEBA
+// ==========================================
+app.get('/api/dashboard/estadisticas', verificarAdmin, async (req, res) => {
+    res.json({
+        mensaje: "¡Bienvenido al área VIP del Dashboard, Administrador!",
+        datosSecretos: {
+            visitas: 1500,
+            nuevosUsuarios: 12
+        }
+    });
+});
 
 
 // ==========================================
