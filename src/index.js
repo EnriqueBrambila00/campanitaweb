@@ -63,44 +63,48 @@ app.post('/api/registro', async (req, res) => {
     }
 });
 // ==========================================
-// ENDPOINT DE AUTENTICACIÓN (LOGIN)
+// ENDPOINT DE AUTENTICACIÓN (LOGIN) como está en local host debo quitar el samesite por el momento, pero en producción debe ser 'none' para que funcione con Render
 // ==========================================
 app.post('/api/login', async (req, res) => {
     const { correo, contrasena } = req.body;
 
     try {
+        // Buscamos al usuario Y de una vez traemos sus roles desde la tabla intermedia
         const usuario = await prisma.usuario.findUnique({
-            where: { correo: correo }
+            where: { correo: correo },
+            include: {
+                roles: {
+                    include: { rol: true }
+                }
+            }
         });
 
-        if (!usuario) {
-            return res.status(401).json({ error: 'Credenciales inválidas' });
-        }
+        if (!usuario) return res.status(401).json({ error: 'Credenciales inválidas' });
 
-        // [RÚBRICA: Si manejan contraseñas u otra clave de acceso, aplicar el hashing o cifrado adecuado] (10 puntos)
         const contrasenaValida = await bcrypt.compare(contrasena, usuario.contrasena);
-        
-        if (!contrasenaValida) {
-            return res.status(401).json({ error: 'Credenciales inválidas' });
-        }
+        if (!contrasenaValida) return res.status(401).json({ error: 'Credenciales inválidas' });
 
-        // [RÚBRICA: Utilización de tokens para autenticación (JWT)] (10 puntos)
-        // [RÚBRICA: Verificación de autenticidad de datos (firmas digitales)] (15 puntos)
+        // Verificamos si tiene el rol de admin
+        const esAdmin = usuario.roles.some((asignacion) => asignacion.rol.nombre_rol === 'admin');
+
         const token = jwt.sign(
             { id_usuario: usuario.id_usuario, correo: usuario.correo },
             process.env.JWT_SECRET || 'secreto_temporal_de_desarrollo_cambiar_luego', 
             { expiresIn: '2h' }
         );
 
-        // [RÚBRICA: En caso de manejar cookies, que estén protegidas (Secure, HttpOnly, SameSite=Strict)] (5 puntos)
         res.cookie('auth_token', token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'Strict',
-            maxAge: 2 * 60 * 60 * 1000 // 2 horas
+            secure: true,     // Render usa HTTPS, así que requiere true
+            sameSite: 'none', // <--- CLAVE: Permite enviar la cookie de Render a tu localhost
+            maxAge: 2 * 60 * 60 * 1000 
         });
 
-        res.json({ mensaje: 'Autenticación exitosa', token });
+        // Le enviamos a React la confirmación Y si es administrador
+        res.json({ 
+            mensaje: 'Autenticación exitosa', 
+            esAdmin: esAdmin 
+        });
 
     } catch (error) {
         console.error(error);
