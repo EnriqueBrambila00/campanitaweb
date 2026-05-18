@@ -9,7 +9,7 @@ const { PrismaClient } = require('@prisma/client');
 const app = express();
 
 const prisma = new PrismaClient({
-  adapter: null // Le decimos explícitamente que no usamos un adaptador externo (como PGLite o PlanetScale), sino la conexión estándar a Aiven.
+  adapter: null // Le decimos explícitamente que no usamos un adaptador externo, sino la conexión estándar a Aiven.
 });
 
 // ==========================================
@@ -21,19 +21,16 @@ app.use(helmet());
 
 // [RÚBRICA: Encabezados de seguridad: Access-Control-Allow-Origin] (Parte de los 10 puntos)
 app.use(cors({
-    // IMPORTANTE: Para hacer pruebas en tu computadora, cambia esto a 'http://localhost:5173' temporalmente. 
-    // Cuando lo subas a Render, pones la URL de tu frontend.
-    origin: ['http://localhost:5173', 
-            'https://campanitaweb.onrender.com'],
-
+    origin: [
+        'http://localhost:5173', 
+        'https://campanitaweb.onrender.com'
+    ],
     credentials: true
 }));
 
 // [RÚBRICA: Prevención de inyecciones de código SQL, JavaScript u otro...] (10 puntos)
-// Prisma escapa automáticamente todos los inputs en las consultas, previniendo inyección SQL.
 app.use(express.json());
 app.use(cookieParser());
-
 
 
 // ==========================================
@@ -52,7 +49,7 @@ app.post('/api/registro', async (req, res) => {
             where: { nombre_rol: 'usuario' }
         });
 
-        // (Opcional pero recomendado) Si el rol "usuario" no existe aún, lo creamos
+        // Si el rol "usuario" no existe aún, lo creamos
         if (!rolNormal) {
             rolNormal = await prisma.rol.create({
                 data: { nombre_rol: 'usuario' }
@@ -82,8 +79,10 @@ app.post('/api/registro', async (req, res) => {
         res.status(500).json({ error: 'Error al registrar el usuario. Es posible que el correo o nombre ya existan.' });
     }
 });
+
+
 // ==========================================
-// ENDPOINT DE AUTENTICACIÓN (LOGIN) como está en local host debo quitar el samesite por el momento, pero en producción debe ser 'none' para que funcione con Render
+// ENDPOINT DE AUTENTICACIÓN (LOGIN)
 // ==========================================
 app.post('/api/login', async (req, res) => {
     const { correo, contrasena } = req.body;
@@ -116,7 +115,7 @@ app.post('/api/login', async (req, res) => {
         res.cookie('auth_token', token, {
             httpOnly: true,
             secure: true,     // Render usa HTTPS, así que requiere true
-            sameSite: 'none', // <--- CLAVE: Permite enviar la cookie de Render a tu localhost
+            sameSite: 'none', // Permite enviar la cookie de Render a tu localhost
             maxAge: 2 * 60 * 60 * 1000 
         });
 
@@ -131,49 +130,32 @@ app.post('/api/login', async (req, res) => {
         res.status(500).json({ error: 'Error del servidor al iniciar sesión' });
     }
 });
+
+
 // ==========================================
 // MIDDLEWARES DE AUTENTICACIÓN Y ROLES
 // ==========================================
-
-// [RÚBRICA: Utilización de tokens para autenticación (JWT)] (10 puntos) - Verificación de lectura
 const verificarAdmin = async (req, res, next) => {
     try {
-        // 1. Buscamos el token en las cookies seguras
         const token = req.cookies.auth_token;
-        
-        if (!token) {
-            return res.status(401).json({ error: 'Acceso denegado. Debes iniciar sesión.' });
-        }
+        if (!token) return res.status(401).json({ error: 'Acceso denegado. Debes iniciar sesión.' });
 
-        // 2. Verificamos la firma digital del token
         const decodificado = jwt.verify(token, process.env.JWT_SECRET);
         
-        // 3. Buscamos al usuario usando la estructura exacta de tu schema.prisma
         const usuario = await prisma.usuario.findUnique({
             where: { id_usuario: decodificado.id_usuario },
             include: {
-                roles: {       // Entramos a la tabla intermedia (UsuariosRoles)
-                    include: {
-                        rol: true  // Traemos el nombre del rol desde la tabla Rol
-                    }
+                roles: {       
+                    include: { rol: true }
                 }
             }
         });
 
-        if (!usuario) {
-            return res.status(401).json({ error: 'Usuario no encontrado.' });
-        }
+        if (!usuario) return res.status(401).json({ error: 'Usuario no encontrado.' });
 
-        // 4. Revisamos si dentro de sus roles tiene el de 'admin'
-        const esAdmin = usuario.roles.some(
-            (asignacion) => asignacion.rol.nombre_rol === 'admin'
-        );
+        const esAdmin = usuario.roles.some((asignacion) => asignacion.rol.nombre_rol === 'admin');
+        if (!esAdmin) return res.status(403).json({ error: 'Acceso denegado. Área exclusiva para Administradores.' });
 
-        if (!esAdmin) {
-            return res.status(403).json({ error: 'Acceso denegado. Área exclusiva para Administradores.' });
-        }
-
-        // 5. Si es admin, le abrimos la puerta
         req.usuario = usuario;
         next(); 
 
@@ -183,106 +165,102 @@ const verificarAdmin = async (req, res, next) => {
     }
 };
 
+
 // ==========================================
-// RUTA PROTEGIDA DE PRUEBA
+// RUTA PROTEGIDA DE PRUEBA (DASHBOARD INIT)
 // ==========================================
 app.get('/api/dashboard/estadisticas', verificarAdmin, async (req, res) => {
     res.json({
         mensaje: "¡Bienvenido al área VIP del Dashboard, Administrador!",
-        datosSecretos: {
-            visitas: 1500,
-            nuevosUsuarios: 12
-        }
+        datosSecretos: { visitas: 1500, nuevosUsuarios: 12 }
     });
 });
 
 
 // ==========================================
-// TUS RUTAS EXISTENTES (API)
+// TUS RUTAS EXISTENTES (API PÚBLICA)
 // ==========================================
 
-// Ruta de prueba: Obtener todos los roles de la base de datos
 app.get('/roles', async (req, res) => {
-  try {
-    const roles = await prisma.rol.findMany();
-    res.json(roles);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error al conectar con la base de datos" });
-  }
+  try { res.json(await prisma.rol.findMany()); } 
+  catch (error) { res.status(500).json({ error: "Error de BD" }); }
 });
 
-// usuarios
 app.get('/usuarios', async (req, res) => {
-  try {
-    const data = await prisma.usuario.findMany();
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: "Error al obtener usuarios" });
-  }
+  try { res.json(await prisma.usuario.findMany()); } 
+  catch (error) { res.status(500).json({ error: "Error al obtener usuarios" }); }
 });
 
-// personajes
 app.get('/personajes', async (req, res) => {
-  try {
-    const data = await prisma.personaje.findMany();
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: "Error al obtener personajes" });
-  }
+  try { res.json(await prisma.personaje.findMany()); } 
+  catch (error) { res.status(500).json({ error: "Error al obtener personajes" }); }
 });
 
-// Obtener la galería
 app.get('/galeria', async (req, res) => {
-  try {
-    const data = await prisma.galeria.findMany();
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: "Error al obtener la galería" });
-  }
+  try { res.json(await prisma.galeria.findMany()); } 
+  catch (error) { res.status(500).json({ error: "Error al obtener la galería" }); }
 });
+
+// NUNVA RUTA PÚBLICA DE MAPAS
+app.get('/mapas', async (req, res) => {
+  try { res.json(await prisma.mapa.findMany()); } 
+  catch (error) { res.status(500).json({ error: "Error al obtener mapas" }); }
+});
+
 
 // ==========================================
 // OPERACIONES ADMINISTRATIVAS (CRUD)
 // ==========================================
 
 // --- PERSONAJES ---
-// Crear personaje (Protegido)
 app.post('/api/admin/personajes', verificarAdmin, async (req, res) => {
     const { nombre, descripcion, imagen_url } = req.body;
     try {
-        const nuevo = await prisma.personaje.create({
-            data: { nombre, descripcion, imagen_url }
-        });
+        const nuevo = await prisma.personaje.create({ data: { nombre, descripcion, imagen_url } });
         res.json(nuevo);
-    } catch (e) { res.status(500).json({ error: "Error al crear" }); }
+    } catch (e) { res.status(500).json({ error: "Error al crear personaje" }); }
 });
 
-// Borrar personaje (Protegido)
 app.delete('/api/admin/personajes/:id', verificarAdmin, async (req, res) => {
     try {
         await prisma.personaje.delete({ where: { id_personaje: parseInt(req.params.id) } });
-        res.json({ mensaje: "Eliminado correctamente" });
-    } catch (e) { res.status(500).json({ error: "Error al borrar" }); }
+        res.json({ mensaje: "Personaje eliminado" });
+    } catch (e) { res.status(500).json({ error: "Error al borrar personaje" }); }
 });
 
 // --- GALERÍA ---
 app.post('/api/admin/galeria', verificarAdmin, async (req, res) => {
     const { titulo, descripcion, imagen_url } = req.body;
     try {
-        const nuevo = await prisma.galeria.create({
-            data: { titulo, descripcion, imagen_url }
-        });
+        const nuevo = await prisma.galeria.create({ data: { titulo, descripcion, imagen_url } });
         res.json(nuevo);
-    } catch (e) { res.status(500).json({ error: "Error al subir" }); }
+    } catch (e) { res.status(500).json({ error: "Error al subir a galería" }); }
 });
 
 app.delete('/api/admin/galeria/:id', verificarAdmin, async (req, res) => {
     try {
         await prisma.galeria.delete({ where: { id_imagen: parseInt(req.params.id) } });
         res.json({ mensaje: "Imagen eliminada" });
-    } catch (e) { res.status(500).json({ error: "Error al borrar" }); }
+    } catch (e) { res.status(500).json({ error: "Error al borrar imagen" }); }
 });
+
+// --- MAPAS ---
+app.post('/api/admin/mapas', verificarAdmin, async (req, res) => {
+    const { nombre, descripcion, imagen_url } = req.body;
+    try {
+        const nuevo = await prisma.mapa.create({ data: { nombre, descripcion, imagen_url } });
+        res.json(nuevo);
+    } catch (e) { res.status(500).json({ error: "Error al subir mapa" }); }
+});
+
+app.delete('/api/admin/mapas/:id', verificarAdmin, async (req, res) => {
+    try {
+        await prisma.mapa.delete({ where: { id_mapa: parseInt(req.params.id) } });
+        res.json({ mensaje: "Mapa eliminado" });
+    } catch (e) { res.status(500).json({ error: "Error al borrar mapa" }); }
+});
+
+
 // ==========================================
 // ARRANQUE DEL SERVIDOR
 // ==========================================
