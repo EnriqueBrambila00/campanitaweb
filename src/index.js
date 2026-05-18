@@ -243,6 +243,47 @@ app.get('/galeria', async (req, res) => {
 });
 
 // ==========================================
+// OPERACIONES ADMINISTRATIVAS (CRUD)
+// ==========================================
+
+// --- PERSONAJES ---
+// Crear personaje (Protegido)
+app.post('/api/admin/personajes', verificarAdmin, async (req, res) => {
+    const { nombre, descripcion, imagen_url } = req.body;
+    try {
+        const nuevo = await prisma.personaje.create({
+            data: { nombre, descripcion, imagen_url }
+        });
+        res.json(nuevo);
+    } catch (e) { res.status(500).json({ error: "Error al crear" }); }
+});
+
+// Borrar personaje (Protegido)
+app.delete('/api/admin/personajes/:id', verificarAdmin, async (req, res) => {
+    try {
+        await prisma.personaje.delete({ where: { id_personaje: parseInt(req.params.id) } });
+        res.json({ mensaje: "Eliminado correctamente" });
+    } catch (e) { res.status(500).json({ error: "Error al borrar" }); }
+});
+
+// --- GALERÍA ---
+app.post('/api/admin/galeria', verificarAdmin, async (req, res) => {
+    const { titulo, descripcion, imagen_url } = req.body;
+    try {
+        const nuevo = await prisma.galeria.create({
+            data: { titulo, descripcion, imagen_url }
+        });
+        res.json(nuevo);
+    } catch (e) { res.status(500).json({ error: "Error al subir" }); }
+});
+
+app.delete('/api/admin/galeria/:id', verificarAdmin, async (req, res) => {
+    try {
+        await prisma.galeria.delete({ where: { id_imagen: parseInt(req.params.id) } });
+        res.json({ mensaje: "Imagen eliminada" });
+    } catch (e) { res.status(500).json({ error: "Error al borrar" }); }
+});
+// ==========================================
 // ARRANQUE DEL SERVIDOR
 // ==========================================
 const PORT = process.env.PORT || 3000;
