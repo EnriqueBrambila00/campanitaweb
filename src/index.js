@@ -58,20 +58,23 @@ const validarCsrf = (req, res, next) => {
     const tokenCookie = req.cookies.csrf_token;
     const tokenBody = req.body.csrfToken;
     const tokenHeader = req.headers['x-csrf-token'];
+    
+    const tokenRecibido = tokenBody || tokenHeader;
+    if (!tokenRecibido) {
+        return res.status(403).json({ error: 'Falta la cookie CSRF en la solicitud' });
+    }
+    if (tokenCookie){
+        if (tokenCookie !== tokenRecibido) {
+            return res.status(403).json({ error: 'Token CSRF inválido' });
+        }
+        return next();
+    } 
 
-    if (!tokenCookie) {
-        return res.status(403).json({ error: 'Falta la cookie CSRF' });
+    if (tokenHeader || tokenBody) {
+        return next();
     }
 
-    if (!tokenBody && !tokenHeader) {
-        return res.status(403).json({ error: 'Falta el token CSRF en el formulario' });
-    }
-
-    if (tokenCookie !== tokenBody && tokenCookie !== tokenHeader) {
-        return res.status(403).json({ error: 'Token CSRF inválido' });
-    }
-
-    next();
+    return res.status(403).json({ error: 'Token CSRF no encontrado en cookies ni en el cuerpo de la solicitud' });
 };
 
 // ==========================================
