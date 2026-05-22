@@ -25,7 +25,8 @@ app.use(cors({
     origin: [
         'http://localhost:5173',
         'https://campanitaweb.vercel.app',
-        'https://campanitaweb.netlify.app'
+        'https://campanitaweb.netlify.app',
+        'https://campanitatecnm.onrender.com'
     ],
     credentials: true
 }));
