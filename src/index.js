@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
 
 const app = express();
@@ -22,8 +23,9 @@ app.use(helmet());
 // [RÚBRICA: Encabezados de seguridad: Access-Control-Allow-Origin] (Parte de los 10 puntos)
 app.use(cors({
     origin: [
-        'http://localhost:5173', 
-        'https://campanitaweb.onrender.com'
+        'http://localhost:5173',
+        'https://campanitaweb.vercel.app',
+        'https://campanitaweb.netlify.app'
     ],
     credentials: true
 }));
@@ -32,11 +34,49 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+// ==========================================
+// TOKEN CSRF PARA FORMULARIOS LOGIN / REGISTRO
+// ==========================================
+
+// Ruta que genera el token CSRF y lo manda al frontend
+app.get('/api/csrf-token', (req, res) => {
+    const csrfToken = crypto.randomBytes(32).toString('hex');
+
+    res.cookie('csrf_token', csrfToken, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        maxAge: 15 * 60 * 1000
+    });
+
+    res.json({ csrfToken });
+});
+
+// Middleware para validar el token CSRF antes de aceptar formularios
+const validarCsrf = (req, res, next) => {
+    const tokenCookie = req.cookies.csrf_token;
+    const tokenBody = req.body.csrfToken;
+    const tokenHeader = req.headers['x-csrf-token'];
+
+    if (!tokenCookie) {
+        return res.status(403).json({ error: 'Falta la cookie CSRF' });
+    }
+
+    if (!tokenBody && !tokenHeader) {
+        return res.status(403).json({ error: 'Falta el token CSRF en el formulario' });
+    }
+
+    if (tokenCookie !== tokenBody && tokenCookie !== tokenHeader) {
+        return res.status(403).json({ error: 'Token CSRF inválido' });
+    }
+
+    next();
+};
 
 // ==========================================
 // ENDPOINT DE REGISTRO (NUEVO USUARIO)
 // ==========================================
-app.post('/api/registro', async (req, res) => {
+app.post('/api/registro', validarCsrf, async (req, res) => {
     const { nombre_usuario, correo, contrasena } = req.body;
 
     try {
@@ -84,7 +124,7 @@ app.post('/api/registro', async (req, res) => {
 // ==========================================
 // ENDPOINT DE AUTENTICACIÓN (LOGIN)
 // ==========================================
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', validarCsrf, async (req, res) => {
     const { correo, contrasena } = req.body;
 
     try {
@@ -114,8 +154,8 @@ app.post('/api/login', async (req, res) => {
 
         res.cookie('auth_token', token, {
             httpOnly: true,
-            secure: true,     // Render usa HTTPS, así que requiere true
-            sameSite: 'none', // Permite enviar la cookie de Render a tu localhost
+            secure: true,
+            sameSite: 'none',
             maxAge: 2 * 60 * 60 * 1000 
         });
 
