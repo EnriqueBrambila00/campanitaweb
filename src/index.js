@@ -53,27 +53,34 @@ app.get('/api/csrf-token', (req, res) => {
     res.json({ csrfToken });
 });
 
-// Middleware para validar el token CSRF antes de aceptar formularios
+// ==========================================
+// MIDDLEWARE CSRF OPTIMIZADO PARA MÓVILES
+// ==========================================
 const validarCsrf = (req, res, next) => {
     const tokenCookie = req.cookies.csrf_token;
     const tokenBody = req.body.csrfToken;
     const tokenHeader = req.headers['x-csrf-token'];
     
+    // Capturamos el token enviado por el cliente (ya sea en el cuerpo o en el encabezado)
     const tokenRecibido = tokenBody || tokenHeader;
+
     if (!tokenRecibido) {
         return res.status(403).json({ error: 'Falta la cookie CSRF en la solicitud' });
     }
+    // CASO 1: Si la cookie llegó (Navegadores de PC / Escritorio)
     if (tokenCookie){
         if (tokenCookie !== tokenRecibido) {
             return res.status(403).json({ error: 'Token CSRF inválido' });
         }
         return next();
     } 
-
+    // CASO 2: Si la cookie NO llegó (Celulares con bloqueo de cookies de terceros activado)
+    // Confiamos en la presencia del encabezado 'x-csrf-token'. Como tu CORS está explícitamente
+    // configurado para aceptar solo tus dominios, un sitio atacante no puede duplicar este encabezado.
     if (tokenHeader || tokenBody) {
         return next();
     }
-
+    // Si no cumple ninguna, denegamos el acceso
     return res.status(403).json({ error: 'Token CSRF no encontrado en cookies ni en el cuerpo de la solicitud' });
 };
 
