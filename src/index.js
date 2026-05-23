@@ -197,41 +197,20 @@ app.get('/api/auth/google/callback', async (req, res) => {
 
         let usuario = await prisma.usuario.findUnique({
             where: { correo: correo },
-            include: {
-                roles: {
-                    include: { rol: true }
-                }
-            }
+            include: { roles: { include: { rol: true } } }
         });
 
         if (!usuario) {
-            let rolNormal = await prisma.rol.findUnique({
-                where: { nombre_rol: 'usuario' }
-            });
-
+            let rolNormal = await prisma.rol.findUnique({ where: { nombre_rol: 'usuario' } });
             if (!rolNormal) {
-                rolNormal = await prisma.rol.create({
-                    data: { nombre_rol: 'usuario' }
-                });
+                rolNormal = await prisma.rol.create({ data: { nombre_rol: 'usuario' } });
             }
 
-            let nombreUsuarioBase = nombreGoogle
-                .toLowerCase()
-                .replace(/[^a-z0-9_]/g, '')
-                .slice(0, 30);
-
-            if (!nombreUsuarioBase) {
-                nombreUsuarioBase = 'usuario_google';
-            }
-
+            let nombreUsuarioBase = nombreGoogle.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 30) || 'usuario_google';
             let nombreUsuarioFinal = nombreUsuarioBase;
             let contador = 1;
 
-            while (
-                await prisma.usuario.findUnique({
-                    where: { nombre_usuario: nombreUsuarioFinal }
-                })
-            ) {
+            while (await prisma.usuario.findUnique({ where: { nombre_usuario: nombreUsuarioFinal } })) {
                 nombreUsuarioFinal = `${nombreUsuarioBase}${contador}`;
                 contador++;
             }
@@ -240,32 +219,17 @@ app.get('/api/auth/google/callback', async (req, res) => {
             const contrasenaEncriptada = await bcrypt.hash(contrasenaTemporal, 10);
 
             const nuevoUsuario = await prisma.usuario.create({
-                data: {
-                    nombre_usuario: nombreUsuarioFinal,
-                    correo: correo,
-                    contrasena: contrasenaEncriptada
-                }
+                data: { nombre_usuario: nombreUsuarioFinal, correo: correo, contrasena: contrasenaEncriptada }
             });
 
             await prisma.usuariosRoles.create({
-                data: {
-                    id_usuario: nuevoUsuario.id_usuario,
-                    id_rol: rolNormal.id_rol
-                }
+                data: { id_usuario: nuevoUsuario.id_usuario, id_rol: rolNormal.id_rol }
             });
 
             usuario = await prisma.usuario.findUnique({
                 where: { correo: correo },
-                include: {
-                    roles: {
-                        include: { rol: true }
-                    }
-                }
+                include: { roles: { include: { rol: true } } }
             });
-        }ve
-
-        if (!usuario) {
-            return res.redirect(`${FRONTEND_URL}/login?oauth=usuario_no_encontrado`);
         }
 
         const esAdmin = usuario.roles.some((asignacion) => asignacion.rol.nombre_rol === 'admin');
@@ -289,7 +253,6 @@ app.get('/api/auth/google/callback', async (req, res) => {
         return res.redirect(`${FRONTEND_URL}/login?oauth=error`);
     }
 });
-
 // ==========================================
 // ENDPOINT DE REGISTRO (NUEVO USUARIO)
 // ==========================================
