@@ -30,20 +30,13 @@ const generarCodigoMfa = () => {
 };
 
 const enviarCodigoMfa = async (correo, codigo) => {
-    await transporter.sendMail({
-        from: `"CampanitaWeb" <${process.env.SMTP_USER}>`,
-        to: correo,
-        subject: 'Código de verificación - CampanitaWeb',
-        text: `Tu código de verificación es: ${codigo}. Este código vence en 5 minutos.`,
-        html: `
-            <div style="font-family: Arial, sans-serif;">
-                <h2>CampanitaWeb</h2>
-                <p>Tu código de verificación es:</p>
-                <h1 style="letter-spacing: 4px;">${codigo}</h1>
-                <p>Este código vence en 5 minutos.</p>
-            </div>
-        `
-    });
+    
+    console.log(`\n=========================================`);
+    console.log(`🔑 CÓDIGO MFA PARA ${correo}: ${codigo}`);
+    console.log(`=========================================\n`);
+
+    // Simulamos que el sistema tardó 1 segundo en "enviar" el correo
+    await new Promise(resolve => setTimeout(resolve, 1000));
 };
 
 const prisma = new PrismaClient({
