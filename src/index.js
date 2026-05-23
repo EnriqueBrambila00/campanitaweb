@@ -7,10 +7,44 @@ const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 const { PrismaClient } = require('@prisma/client');
 const { OAuth2Client } = require('google-auth-library');
 
 const app = express();
+
+const codigosMfa = new Map();
+
+const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT),
+    secure: false,
+    auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+    }
+});
+
+const generarCodigoMfa = () => {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+const enviarCodigoMfa = async (correo, codigo) => {
+    await transporter.sendMail({
+        from: `"CampanitaWeb" <${process.env.SMTP_USER}>`,
+        to: correo,
+        subject: 'Código de verificación - CampanitaWeb',
+        text: `Tu código de verificación es: ${codigo}. Este código vence en 5 minutos.`,
+        html: `
+            <div style="font-family: Arial, sans-serif;">
+                <h2>CampanitaWeb</h2>
+                <p>Tu código de verificación es:</p>
+                <h1 style="letter-spacing: 4px;">${codigo}</h1>
+                <p>Este código vence en 5 minutos.</p>
+            </div>
+        `
+    });
+};
 
 const prisma = new PrismaClient({
   adapter: null // Le decimos explícitamente que no usamos un adaptador externo, sino la conexión estándar a Aiven.
