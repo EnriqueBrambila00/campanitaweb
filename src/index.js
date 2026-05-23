@@ -356,14 +356,8 @@ app.post('/api/login', validarCsrf, async (req, res) => {
     const { correo, contrasena } = req.body;
 
     try {
-        // Buscamos al usuario Y de una vez traemos sus roles desde la tabla intermedia
         const usuario = await prisma.usuario.findUnique({
-            where: { correo: correo },
-            include: {
-                roles: {
-                    include: { rol: true }
-                }
-            }
+            where: { correo: correo }
         });
 
         if (!usuario) return res.status(401).json({ error: 'Credenciales inválidas' });
@@ -371,7 +365,53 @@ app.post('/api/login', validarCsrf, async (req, res) => {
         const contrasenaValida = await bcrypt.compare(contrasena, usuario.contrasena);
         if (!contrasenaValida) return res.status(401).json({ error: 'Credenciales inválidas' });
 
-        // Verificamos si tiene el rol de admin
+        // 🔴 MAGIA MFA: En lugar de dar el token, generamos un código
+        const codigo = generarCodigoMfa();
+        
+        // Lo guardamos temporalmente en la memoria del servidor (expira en 5 minutos)
+        codigosMfa.set(correo, { codigo, expira: Date.now() + 5 * 60 * 1000 });
+
+        // Enviamos el correo al usuario
+        await enviarCodigoMfa(correo, codigo);
+
+        // Le avisamos a React que necesitamos que muestre la pantalla del código
+        res.json({ 
+            mensaje: 'Código MFA enviado al correo', 
+            requiereMfa: true 
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error del servidor al iniciar sesión' });
+    }
+});
+
+// ==========================================
+// ENDPOINT MFA (VERIFICAR CÓDIGO)
+// ==========================================
+app.post('/api/login/verificar-mfa', validarCsrf, async (req, res) => {
+    const { correo, codigo } = req.body;
+
+    try {
+        const datosMfa = codigosMfa.get(correo);
+
+        // Validaciones de seguridad del código
+        if (!datosMfa) return res.status(400).json({ error: 'No hay un código pendiente para este correo.' });
+        if (Date.now() > datosMfa.expira) {
+            codigosMfa.delete(correo);
+            return res.status(400).json({ error: 'El código ha expirado. Vuelve a iniciar sesión.' });
+        }
+        if (datosMfa.codigo !== codigo) return res.status(400).json({ error: 'Código incorrecto.' });
+
+        // Si el código es correcto, lo borramos de la memoria para que no se reutilice
+        codigosMfa.delete(correo);
+
+        // Ahora sí, generamos el Token y le damos acceso
+        const usuario = await prisma.usuario.findUnique({
+            where: { correo: correo },
+            include: { roles: { include: { rol: true } } }
+        });
+
         const esAdmin = usuario.roles.some((asignacion) => asignacion.rol.nombre_rol === 'admin');
 
         const token = jwt.sign(
@@ -380,9 +420,9 @@ app.post('/api/login', validarCsrf, async (req, res) => {
             { expiresIn: '2h' }
         );
 
+        // cookieConfig ya la había creado tu compañero más arriba en el archivo
         res.cookie('auth_token', token, cookieConfig);
 
-        // Le enviamos a React la confirmación Y si es administrador
         res.json({ 
             mensaje: 'Autenticación exitosa', 
             esAdmin: esAdmin 
@@ -390,7 +430,7 @@ app.post('/api/login', validarCsrf, async (req, res) => {
 
     } catch (error) {
         console.error(error);
-        res.status(500).json({ error: 'Error del servidor al iniciar sesión' });
+        res.status(500).json({ error: 'Error al verificar el código MFA' });
     }
 });
 
