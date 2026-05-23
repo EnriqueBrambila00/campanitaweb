@@ -267,7 +267,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
                     }
                 }
             });
-        }
+        }ve
 
         if (!usuario) {
             return res.redirect(`${FRONTEND_URL}/login?oauth=usuario_no_encontrado`);
@@ -461,6 +461,18 @@ const verificarAdmin = async (req, res, next) => {
         res.status(401).json({ error: 'Token inválido o expirado. Vuelve a iniciar sesión.' });
     }
 };
+const verificarUsuario = async (req, res, next) => {
+    try {
+        const token = req.cookies.auth_token;
+        if (!token) return res.status(401).json({ error: 'Acceso denegado. Debes iniciar sesión.' });
+
+        const decodificado = jwt.verify(token, process.env.JWT_SECRET || 'secreto_temporal_de_desarrollo_cambiar_luego');
+        req.usuario = decodificado; // Aquí guardamos el ID para usarlo en la ruta
+        next(); 
+    } catch (error) {
+        res.status(401).json({ error: 'Token inválido o expirado.' });
+    }
+};
 
 // ==========================================
 // RUTA PROTEGIDA DE PRUEBA (DASHBOARD INIT)
@@ -470,6 +482,80 @@ app.get('/api/dashboard/estadisticas', verificarAdmin, async (req, res) => {
         mensaje: "¡Bienvenido al área VIP del Dashboard, Administrador!",
         datosSecretos: { visitas: 1500, nuevosUsuarios: 12 }
     });
+});
+
+// ==========================================
+// rubrica de profe: CIFRADO SIMÉTRICO (AES-256)
+// ==========================================
+
+const ALGORITMO = 'aes-256-cbc';
+// Clave maestra de 32 bytes. En una empresa real, esto va en el .env
+const CLAVE_SECRETA = process.env.ENCRYPTION_KEY || 'CampanitaSecreta1234567890123456'; 
+
+const encriptarAES = (texto) => {
+    const iv = crypto.randomBytes(16); // Vector de inicialización (añade aleatoriedad)
+    const cipher = crypto.createCipheriv(ALGORITMO, Buffer.from(CLAVE_SECRETA), iv);
+    let encriptado = cipher.update(texto, 'utf8', 'hex');
+    encriptado += cipher.final('hex');
+    // Guardamos el IV junto con el texto para saber cómo abrirlo después
+    return iv.toString('hex') + ':' + encriptado; 
+};
+
+const desencriptarAES = (textoEncriptado) => {
+    const partes = textoEncriptado.split(':');
+    const iv = Buffer.from(partes.shift(), 'hex');
+    const texto = partes.join(':');
+    const decipher = crypto.createDecipheriv(ALGORITMO, Buffer.from(CLAVE_SECRETA), iv);
+    let desencriptado = decipher.update(texto, 'hex', 'utf8');
+    desencriptado += decipher.final('utf8');
+    return desencriptado;
+};
+
+// 1. Ruta para GUARDAR el teléfono (Se encripta antes de tocar la Base de Datos)
+app.post('/api/perfil/telefono', validarCsrf, verificarUsuario, async (req, res) => {
+    const { telefono } = req.body;
+    try {
+        const telefonoEncriptado = encriptarAES(telefono);
+        
+        await prisma.usuario.update({
+            where: { id_usuario: req.usuario.id_usuario },
+            data: { telefono_secreto: telefonoEncriptado }
+        });
+
+        // 👁️ Imprimimos en consola para tu video/exposición
+        console.log(`\n--- DEMOSTRACIÓN DE CIFRADO SIMÉTRICO ---`);
+        console.log(`🔒 Dato original del usuario: ${telefono}`);
+        console.log(`🔏 Guardado en Aiven como: ${telefonoEncriptado}`);
+        console.log(`-----------------------------------------\n`);
+
+        res.json({ mensaje: 'Teléfono protegido y guardado con éxito' });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al guardar el dato sensible' });
+    }
+});
+
+// 2. Ruta para LEER el teléfono (Se desencripta para mostrárselo al usuario)
+app.get('/api/perfil/telefono', verificarUsuario, async (req, res) => {
+    try {
+        const usuarioBD = await prisma.usuario.findUnique({
+            where: { id_usuario: req.usuario.id_usuario }
+        });
+
+        if (!usuarioBD.telefono_secreto) {
+            return res.json({ telefono: null });
+        }
+
+        const telefonoDesencriptado = desencriptarAES(usuarioBD.telefono_secreto);
+        
+        console.log(`\n--- DEMOSTRACIÓN DE DESENCRIPTADO ---`);
+        console.log(`🔓 Extraído de Aiven: ${usuarioBD.telefono_secreto}`);
+        console.log(`📱 Desencriptado a: ${telefonoDesencriptado}`);
+        console.log(`-------------------------------------\n`);
+
+        res.json({ telefono: telefonoDesencriptado });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al procesar el dato sensible' });
+    }
 });
 
 // ==========================================

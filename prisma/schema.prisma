@@ -15,6 +15,7 @@ model Usuario {
   nombre_usuario   String           @unique @db.VarChar(50)
   correo           String           @unique @db.VarChar(100)
   contrasena       String           @db.VarChar(255)
+  telefono_secreto String?
   fecha_nacimiento DateTime?        @db.Date
   fecha_registro   DateTime         @default(now())
   estado_cuenta    EstadoCuenta     @default(activo)
