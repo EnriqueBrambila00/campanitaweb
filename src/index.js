@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -6,12 +8,28 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
+const { OAuth2Client } = require('google-auth-library');
 
 const app = express();
 
 const prisma = new PrismaClient({
   adapter: null // Le decimos explícitamente que no usamos un adaptador externo, sino la conexión estándar a Aiven.
 });
+
+const googleClient = new OAuth2Client(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_CALLBACK_URL
+);
+
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+const cookieConfig = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    maxAge: 2 * 60 * 60 * 1000
+};
 
 // ==========================================
 // CONFIGURACIONES DE SEGURIDAD GLOBALES
@@ -45,8 +63,8 @@ app.get('/api/csrf-token', (req, res) => {
 
     res.cookie('csrf_token', csrfToken, {
         httpOnly: true,
-        secure: true,
-        sameSite: 'none',
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         maxAge: 15 * 60 * 1000
     });
 
@@ -67,22 +85,188 @@ const validarCsrf = (req, res, next) => {
     if (!tokenRecibido) {
         return res.status(403).json({ error: 'Falta la cookie CSRF en la solicitud' });
     }
+
     // CASO 1: Si la cookie llegó (Navegadores de PC / Escritorio)
-    if (tokenCookie){
+    if (tokenCookie) {
         if (tokenCookie !== tokenRecibido) {
             return res.status(403).json({ error: 'Token CSRF inválido' });
         }
         return next();
     } 
+
     // CASO 2: Si la cookie NO llegó (Celulares con bloqueo de cookies de terceros activado)
     // Confiamos en la presencia del encabezado 'x-csrf-token'. Como tu CORS está explícitamente
     // configurado para aceptar solo tus dominios, un sitio atacante no puede duplicar este encabezado.
     if (tokenHeader || tokenBody) {
         return next();
     }
+
     // Si no cumple ninguna, denegamos el acceso
     return res.status(403).json({ error: 'Token CSRF no encontrado en cookies ni en el cuerpo de la solicitud' });
 };
+
+// ==========================================
+// LOGIN CON GOOGLE - OAUTH2 / OPENID CONNECT
+// ==========================================
+
+app.get('/api/auth/google', (req, res) => {
+    const state = crypto.randomBytes(32).toString('hex');
+
+    res.cookie('google_oauth_state', state, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge: 10 * 60 * 1000
+    });
+
+    const authUrl = googleClient.generateAuthUrl({
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        redirect_uri: process.env.GOOGLE_CALLBACK_URL,
+        response_type: 'code',
+        access_type: 'offline',
+        scope: ['openid', 'email', 'profile'],
+        prompt: 'select_account',
+        state
+    });
+
+    res.redirect(authUrl);
+});
+
+app.get('/api/auth/google/callback', async (req, res) => {
+    const { code, state } = req.query;
+
+    try {
+        const stateCookie = req.cookies.google_oauth_state;
+
+        if (!state || !stateCookie || state !== stateCookie) {
+            return res.redirect(`${FRONTEND_URL}/login?oauth=error_state`);
+        }
+
+        if (!code) {
+            return res.redirect(`${FRONTEND_URL}/login?oauth=sin_codigo`);
+        }
+
+        res.clearCookie('google_oauth_state');
+
+        const { tokens } = await googleClient.getToken({
+            code,
+            client_id: process.env.GOOGLE_CLIENT_ID,
+            client_secret: process.env.GOOGLE_CLIENT_SECRET,
+            redirect_uri: process.env.GOOGLE_CALLBACK_URL
+        });
+
+        if (!tokens.id_token) {
+            return res.redirect(`${FRONTEND_URL}/login?oauth=sin_id_token`);
+        }
+
+        const ticket = await googleClient.verifyIdToken({
+            idToken: tokens.id_token,
+            audience: process.env.GOOGLE_CLIENT_ID
+        });
+
+        const payload = ticket.getPayload();
+
+        if (!payload || !payload.email) {
+            return res.redirect(`${FRONTEND_URL}/login?oauth=sin_email`);
+        }
+
+        const correo = payload.email;
+        const nombreGoogle = payload.name || correo.split('@')[0];
+
+        let usuario = await prisma.usuario.findUnique({
+            where: { correo: correo },
+            include: {
+                roles: {
+                    include: { rol: true }
+                }
+            }
+        });
+
+        if (!usuario) {
+            let rolNormal = await prisma.rol.findUnique({
+                where: { nombre_rol: 'usuario' }
+            });
+
+            if (!rolNormal) {
+                rolNormal = await prisma.rol.create({
+                    data: { nombre_rol: 'usuario' }
+                });
+            }
+
+            let nombreUsuarioBase = nombreGoogle
+                .toLowerCase()
+                .replace(/[^a-z0-9_]/g, '')
+                .slice(0, 30);
+
+            if (!nombreUsuarioBase) {
+                nombreUsuarioBase = 'usuario_google';
+            }
+
+            let nombreUsuarioFinal = nombreUsuarioBase;
+            let contador = 1;
+
+            while (
+                await prisma.usuario.findUnique({
+                    where: { nombre_usuario: nombreUsuarioFinal }
+                })
+            ) {
+                nombreUsuarioFinal = `${nombreUsuarioBase}${contador}`;
+                contador++;
+            }
+
+            const contrasenaTemporal = crypto.randomBytes(32).toString('hex');
+            const contrasenaEncriptada = await bcrypt.hash(contrasenaTemporal, 10);
+
+            const nuevoUsuario = await prisma.usuario.create({
+                data: {
+                    nombre_usuario: nombreUsuarioFinal,
+                    correo: correo,
+                    contrasena: contrasenaEncriptada
+                }
+            });
+
+            await prisma.usuariosRoles.create({
+                data: {
+                    id_usuario: nuevoUsuario.id_usuario,
+                    id_rol: rolNormal.id_rol
+                }
+            });
+
+            usuario = await prisma.usuario.findUnique({
+                where: { correo: correo },
+                include: {
+                    roles: {
+                        include: { rol: true }
+                    }
+                }
+            });
+        }
+
+        if (!usuario) {
+            return res.redirect(`${FRONTEND_URL}/login?oauth=usuario_no_encontrado`);
+        }
+
+        const esAdmin = usuario.roles.some((asignacion) => asignacion.rol.nombre_rol === 'admin');
+
+        const token = jwt.sign(
+            { id_usuario: usuario.id_usuario, correo: usuario.correo },
+            process.env.JWT_SECRET || 'secreto_temporal_de_desarrollo_cambiar_luego',
+            { expiresIn: '2h' }
+        );
+
+        res.cookie('auth_token', token, cookieConfig);
+
+        if (esAdmin) {
+            return res.redirect(`${FRONTEND_URL}/dashboard?oauth=google`);
+        }
+
+        return res.redirect(`${FRONTEND_URL}/?oauth=google`);
+
+    } catch (error) {
+        console.error('Error en OAuth Google:', error);
+        return res.redirect(`${FRONTEND_URL}/login?oauth=error`);
+    }
+});
 
 // ==========================================
 // ENDPOINT DE REGISTRO (NUEVO USUARIO)
@@ -131,7 +315,6 @@ app.post('/api/registro', validarCsrf, async (req, res) => {
     }
 });
 
-
 // ==========================================
 // ENDPOINT DE AUTENTICACIÓN (LOGIN)
 // ==========================================
@@ -163,12 +346,7 @@ app.post('/api/login', validarCsrf, async (req, res) => {
             { expiresIn: '2h' }
         );
 
-        res.cookie('auth_token', token, {
-            httpOnly: true,
-            secure: true,
-            sameSite: 'none',
-            maxAge: 2 * 60 * 60 * 1000 
-        });
+        res.cookie('auth_token', token, cookieConfig);
 
         // Le enviamos a React la confirmación Y si es administrador
         res.json({ 
@@ -181,7 +359,6 @@ app.post('/api/login', validarCsrf, async (req, res) => {
         res.status(500).json({ error: 'Error del servidor al iniciar sesión' });
     }
 });
-
 
 // ==========================================
 // MIDDLEWARES DE AUTENTICACIÓN Y ROLES
@@ -216,7 +393,6 @@ const verificarAdmin = async (req, res, next) => {
     }
 };
 
-
 // ==========================================
 // RUTA PROTEGIDA DE PRUEBA (DASHBOARD INIT)
 // ==========================================
@@ -226,7 +402,6 @@ app.get('/api/dashboard/estadisticas', verificarAdmin, async (req, res) => {
         datosSecretos: { visitas: 1500, nuevosUsuarios: 12 }
     });
 });
-
 
 // ==========================================
 // TUS RUTAS EXISTENTES (API PÚBLICA)
@@ -257,7 +432,6 @@ app.get('/mapas', async (req, res) => {
   try { res.json(await prisma.mapa.findMany()); } 
   catch (error) { res.status(500).json({ error: "Error al obtener mapas" }); }
 });
-
 
 // ==========================================
 // OPERACIONES ADMINISTRATIVAS (CRUD)
@@ -310,7 +484,6 @@ app.delete('/api/admin/mapas/:id', verificarAdmin, async (req, res) => {
         res.json({ mensaje: "Mapa eliminado" });
     } catch (e) { res.status(500).json({ error: "Error al borrar mapa" }); }
 });
-
 
 // ==========================================
 // ARRANQUE DEL SERVIDOR
