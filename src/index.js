@@ -139,12 +139,7 @@ const validarCsrf = (req, res, next) => {
 app.get('/api/auth/google', (req, res) => {
     const state = crypto.randomBytes(32).toString('hex');
 
-    res.cookie('google_oauth_state', state, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        maxAge: 10 * 60 * 1000
-    });
+    res.cookie('google_oauth_state', state, cookieConfig);
 
     const authUrl = googleClient.generateAuthUrl({
         client_id: process.env.GOOGLE_CLIENT_ID,
