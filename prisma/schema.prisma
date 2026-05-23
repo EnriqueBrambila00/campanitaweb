@@ -52,6 +52,7 @@ model Personaje {
   nombre       String  @db.VarChar(100)
   descripcion  String? @db.Text
   imagen_url   String? @db.VarChar(255)
+  firma_digital String?
 
   @@map("personajes")
 }

@@ -557,6 +557,23 @@ app.get('/api/perfil/telefono', verificarUsuario, async (req, res) => {
         res.status(500).json({ error: 'Error al procesar el dato sensible' });
     }
 });
+// ==========================================
+// PUNTO 4: FIRMAS DIGITALES (HMAC-SHA256)
+// ==========================================
+const CLAVE_FIRMA = process.env.SIGNATURE_KEY || 'campanita_super_secreta_123';
+
+const generarFirma = (datos) => {
+    // Convertimos los datos a un string JSON ordenado para que la firma sea consistente
+    const stringDatos = JSON.stringify(datos);
+    return crypto.createHmac('sha256', CLAVE_FIRMA)
+                 .update(stringDatos)
+                 .digest('hex');
+};
+
+const verificarFirma = (datos, firmaRecibida) => {
+    const firmaCalculada = generarFirma(datos);
+    return firmaCalculada === firmaRecibida;
+};
 
 // ==========================================
 // TUS RUTAS EXISTENTES (API PÚBLICA)
@@ -592,11 +609,19 @@ app.get('/mapas', async (req, res) => {
 // OPERACIONES ADMINISTRATIVAS (CRUD)
 // ==========================================
 
-// --- PERSONAJES ---
+// --- PERSONAJES (CON FIRMA DIGITAL) ---
 app.post('/api/admin/personajes', verificarAdmin, async (req, res) => {
     const { nombre, descripcion, imagen_url } = req.body;
     try {
-        const nuevo = await prisma.personaje.create({ data: { nombre, descripcion, imagen_url } });
+        // Datos que vamos a firmar
+        const datosParaFirmar = { nombre, descripcion, imagen_url };
+        const firma = generarFirma(datosParaFirmar);
+
+        const nuevo = await prisma.personaje.create({ 
+            data: { nombre, descripcion, imagen_url, firma_digital: firma } 
+        });
+
+        console.log(`✅ Personaje firmado. Sello: ${firma}`);
         res.json(nuevo);
     } catch (e) { res.status(500).json({ error: "Error al crear personaje" }); }
 });
@@ -606,6 +631,12 @@ app.delete('/api/admin/personajes/:id', verificarAdmin, async (req, res) => {
         await prisma.personaje.delete({ where: { id_personaje: parseInt(req.params.id) } });
         res.json({ mensaje: "Personaje eliminado" });
     } catch (e) { res.status(500).json({ error: "Error al borrar personaje" }); }
+});
+// Ruta para verificar la integridad de un personaje (puedes usarla desde el Dashboard para mostrar el mensaje)
+app.get('/api/admin/verificar/:id', async (req, res) => {
+    const p = await prisma.personaje.findUnique({ where: { id_personaje: parseInt(req.params.id) } });
+    const esValido = verificarFirma({ nombre: p.nombre, descripcion: p.descripcion, imagen_url: p.imagen_url }, p.firma_digital);
+    res.json({ mensaje: esValido ? "Sello de integridad intacto ✅" : "¡ALERTA: DATOS ALTERADOS! ❌" });
 });
 
 // --- GALERÍA ---
