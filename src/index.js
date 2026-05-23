@@ -377,7 +377,9 @@ app.post('/api/login', validarCsrf, async (req, res) => {
         // Le avisamos a React que necesitamos que muestre la pantalla del código
         res.json({ 
             mensaje: 'Código MFA enviado al correo', 
-            requiereMfa: true 
+            requiereMfa: true,
+            codigoDemo: codigo // Se añadio ya que el servidor de render no puede enviar correos, así que para propósitos de desarrollo se envía el código en la respuesta. ¡Recuerda eliminar esto en producción!
+            //te odio render
         });
 
     } catch (error) {
