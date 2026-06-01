@@ -51,10 +51,11 @@ const googleClient = new OAuth2Client(
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
+// Configuración de cookies para autenticación y OAuth primera parte
 const cookieConfig = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', //strict
     maxAge: 2 * 60 * 60 * 1000
 };
 
@@ -69,8 +70,6 @@ app.use(helmet());
 app.use(cors({
     origin: [
         'http://localhost:5173',
-        'https://campanitaweb.vercel.app',
-        'https://campanitaweb.netlify.app',
         'https://campanitatecnm.onrender.com'
     ],
     credentials: true
@@ -84,6 +83,8 @@ app.use(cookieParser());
 // TOKEN CSRF PARA FORMULARIOS LOGIN / REGISTRO
 // ==========================================
 
+
+//primera parte
 // Ruta que genera el token CSRF y lo manda al frontend
 app.get('/api/csrf-token', (req, res) => {
     const csrfToken = crypto.randomBytes(32).toString('hex');
@@ -340,7 +341,7 @@ app.post('/api/login', validarCsrf, async (req, res) => {
 });
 
 // ==========================================
-// ENDPOINT MFA (VERIFICAR CÓDIGO)
+// ENDPOINT MFA (VERIFICAR CÓDIGO) segunda parte
 // ==========================================
 app.post('/api/login/verificar-mfa', validarCsrf, async (req, res) => {
     const { correo, codigo } = req.body;
@@ -373,7 +374,7 @@ app.post('/api/login/verificar-mfa', validarCsrf, async (req, res) => {
             { expiresIn: '2h' }
         );
 
-        // cookieConfig ya la había creado tu compañero más arriba en el archivo
+        // cookieConfig
         res.cookie('auth_token', token, cookieConfig);
 
         res.json({ 
@@ -443,7 +444,7 @@ app.get('/api/dashboard/estadisticas', verificarAdmin, async (req, res) => {
 });
 
 // ==========================================
-// rubrica de profe: CIFRADO SIMÉTRICO (AES-256)
+//  CIFRADO SIMÉTRICO (AES-256)
 // ==========================================
 
 const ALGORITMO = 'aes-256-cbc';
