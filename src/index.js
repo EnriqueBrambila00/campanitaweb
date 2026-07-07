@@ -10,6 +10,9 @@ const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const { PrismaClient } = require('@prisma/client');
 const { OAuth2Client } = require('google-auth-library');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
 const app = express();
 
@@ -78,6 +81,31 @@ app.use(cors({
 // [RÚBRICA: Prevención de inyecciones de código SQL, JavaScript u otro...] (10 puntos)
 app.use(express.json());
 app.use(cookieParser());
+
+// Configuración de carpetas para modelos 3D e imágenes subidas
+const uploadDirBackend = path.join(__dirname, '../public/modelos3d');
+if (!fs.existsSync(uploadDirBackend)) {
+  fs.mkdirSync(uploadDirBackend, { recursive: true });
+}
+const uploadDirFrontend = path.join(__dirname, '../../CampanitaWebFront/CampanitaWebFront/public/modelos3d');
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDirBackend);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const nombreLimpio = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9]/g, '_');
+    cb(null, `${nombreLimpio}_${Date.now()}${ext}`);
+  }
+});
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 50 * 1024 * 1024 } // 50MB max para modelos 3D
+});
+
+// Servir de forma estática la carpeta de modelos 3D
+app.use('/modelos3d', express.static(uploadDirBackend));
 
 // ==========================================
 // TOKEN CSRF PARA FORMULARIOS LOGIN / REGISTRO
@@ -582,6 +610,36 @@ app.get('/noticias/:id', async (req, res) => {
     if (!noticia) return res.status(404).json({ error: "Noticia no encontrada" });
     res.json(noticia); 
   } catch (error) { res.status(500).json({ error: "Error al obtener la noticia" }); }
+});
+
+// ==========================================
+// ENDPOINT PARA SUBIR MODELOS 3D E IMÁGENES
+// ==========================================
+app.post('/api/admin/upload', verificarAdmin, upload.single('archivo'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No se envió ningún archivo.' });
+    }
+    const filename = req.file.filename;
+    
+    // Si estamos en local y existe la carpeta del frontend, copiar el archivo allá también
+    if (fs.existsSync(uploadDirFrontend)) {
+      try {
+        fs.copyFileSync(req.file.path, path.join(uploadDirFrontend, filename));
+      } catch (e) { console.error('No se pudo copiar al frontend local:', e); }
+    }
+
+    // Construir URL pública para acceder al archivo
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.get('host');
+    const urlArchivo = `${protocol}://${host}/modelos3d/${filename}`;
+
+    console.log(`✅ Archivo subido exitosamente: ${urlArchivo}`);
+    res.json({ url: urlArchivo, filename });
+  } catch (error) {
+    console.error('Error al subir archivo:', error);
+    res.status(500).json({ error: 'Error al procesar la subida del archivo.' });
+  }
 });
 
 // ==========================================
