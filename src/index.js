@@ -564,6 +564,26 @@ app.get('/mapas', async (req, res) => {
   catch (error) { res.status(500).json({ error: "Error al obtener mapas" }); }
 });
 
+// --- NOTICIAS PÚBLICAS ---
+app.get('/noticias', async (req, res) => {
+  try { 
+    const noticias = await prisma.noticia.findMany({
+      orderBy: { fecha_publicacion: 'desc' }
+    });
+    res.json(noticias); 
+  } catch (error) { res.status(500).json({ error: "Error al obtener noticias" }); }
+});
+
+app.get('/noticias/:id', async (req, res) => {
+  try { 
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+    const noticia = await prisma.noticia.findUnique({ where: { id_noticia: id } });
+    if (!noticia) return res.status(404).json({ error: "Noticia no encontrada" });
+    res.json(noticia); 
+  } catch (error) { res.status(500).json({ error: "Error al obtener la noticia" }); }
+});
+
 // ==========================================
 // OPERACIONES ADMINISTRATIVAS (CRUD)
 // ==========================================
@@ -628,6 +648,63 @@ app.delete('/api/admin/mapas/:id', verificarAdmin, async (req, res) => {
         await prisma.mapa.delete({ where: { id_mapa: parseInt(req.params.id) } });
         res.json({ mensaje: "Mapa eliminado" });
     } catch (e) { res.status(500).json({ error: "Error al borrar mapa" }); }
+});
+
+// --- NOTICIAS CRUD ---
+app.post('/api/admin/noticias', verificarAdmin, async (req, res) => {
+    const { titulo, contenido, imagen_url } = req.body;
+    if (!titulo || !contenido) {
+        return res.status(400).json({ error: "Título y contenido son obligatorios" });
+    }
+    if (titulo.length > 150) {
+        return res.status(400).json({ error: "El título no puede exceder los 150 caracteres" });
+    }
+    try {
+        const nueva = await prisma.noticia.create({ 
+            data: { 
+                titulo: titulo.trim(), 
+                contenido: contenido.trim(), 
+                imagen_url: imagen_url ? imagen_url.trim() : null 
+            } 
+        });
+        res.json(nueva);
+    } catch (e) { 
+        console.error("Error en POST noticias:", e);
+        res.status(500).json({ error: "Error al crear la noticia" }); 
+    }
+});
+
+app.put('/api/admin/noticias/:id', verificarAdmin, async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+    const { titulo, contenido, imagen_url } = req.body;
+    if (!titulo || !contenido) {
+        return res.status(400).json({ error: "Título y contenido son obligatorios" });
+    }
+    if (titulo.length > 150) {
+        return res.status(400).json({ error: "El título no puede exceder los 150 caracteres" });
+    }
+    try {
+        const actualizada = await prisma.noticia.update({
+            where: { id_noticia: id },
+            data: { 
+                titulo: titulo.trim(), 
+                contenido: contenido.trim(), 
+                imagen_url: imagen_url ? imagen_url.trim() : null 
+            }
+        });
+        res.json(actualizada);
+    } catch (e) { 
+        console.error("Error en PUT noticias:", e);
+        res.status(500).json({ error: "Error al actualizar la noticia" }); 
+    }
+});
+
+app.delete('/api/admin/noticias/:id', verificarAdmin, async (req, res) => {
+    try {
+        await prisma.noticia.delete({ where: { id_noticia: parseInt(req.params.id) } });
+        res.json({ mensaje: "Noticia eliminada" });
+    } catch (e) { res.status(500).json({ error: "Error al borrar noticia" }); }
 });
 
 // ==========================================
