@@ -33,7 +33,7 @@ const generarCodigoMfa = () => {
 };
 
 const enviarCodigoMfa = async (correo, codigo) => {
-    
+
     console.log(`\n=========================================`);
     console.log(`🔑 CÓDIGO MFA PARA ${correo}: ${codigo}`);
     console.log(`=========================================\n`);
@@ -43,7 +43,7 @@ const enviarCodigoMfa = async (correo, codigo) => {
 };
 
 const prisma = new PrismaClient({
-  adapter: null // Le decimos explícitamente que no usamos un adaptador externo, sino la conexión estándar a Aiven.
+    adapter: null // Le decimos explícitamente que no usamos un adaptador externo, sino la conexión estándar a Aiven.
 });
 
 const googleClient = new OAuth2Client(
@@ -67,9 +67,7 @@ const cookieConfig = {
 // ==========================================
 
 // [RÚBRICA: Encabezados de seguridad para prevenir XSS, CSRF (X-Frame-Options, Content-Security-Policy, etc.)] (10 puntos)
-app.use(helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
+app.use(helmet());
 
 // [RÚBRICA: Encabezados de seguridad: Access-Control-Allow-Origin] (Parte de los 10 puntos)
 app.use(cors({
@@ -87,23 +85,23 @@ app.use(cookieParser());
 // Configuración de carpetas para modelos 3D e imágenes subidas
 const uploadDirBackend = path.join(__dirname, '../public/modelos3d');
 if (!fs.existsSync(uploadDirBackend)) {
-  fs.mkdirSync(uploadDirBackend, { recursive: true });
+    fs.mkdirSync(uploadDirBackend, { recursive: true });
 }
-const uploadDirFrontend = path.join(__dirname, '../../CampanitaWebFront/public/modelos3d');
+const uploadDirFrontend = path.join(__dirname, '../../CampanitaWebFront/CampanitaWebFront/public/modelos3d');
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDirBackend);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const nombreLimpio = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9]/g, '_');
-    cb(null, `${nombreLimpio}_${Date.now()}${ext}`);
-  }
+    destination: (req, file, cb) => {
+        cb(null, uploadDirBackend);
+    },
+    filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname);
+        const nombreLimpio = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9]/g, '_');
+        cb(null, `${nombreLimpio}_${Date.now()}${ext}`);
+    }
 });
-const upload = multer({ 
-  storage: storage,
-  limits: { fileSize: 50 * 1024 * 1024 } // 50MB max para modelos 3D
+const upload = multer({
+    storage: storage,
+    limits: { fileSize: 50 * 1024 * 1024 } // 50MB max para modelos 3D
 });
 
 // Servir de forma estática la carpeta de modelos 3D
@@ -136,7 +134,7 @@ const validarCsrf = (req, res, next) => {
     const tokenCookie = req.cookies.csrf_token;
     const tokenBody = req.body.csrfToken;
     const tokenHeader = req.headers['x-csrf-token'];
-    
+
     // Capturamos el token enviado por el cliente (ya sea en el cuerpo o en el encabezado)
     const tokenRecibido = tokenBody || tokenHeader;
 
@@ -150,7 +148,7 @@ const validarCsrf = (req, res, next) => {
             return res.status(403).json({ error: 'Token CSRF inválido' });
         }
         return next();
-    } 
+    }
 
     // CASO 2: Si la cookie NO llegó (Celulares con bloqueo de cookies de terceros activado)
     // Confiamos en la presencia del encabezado 'x-csrf-token'. Como tu CORS está explícitamente
@@ -349,7 +347,7 @@ app.post('/api/login', validarCsrf, async (req, res) => {
 
         // 🔴 MAGIA MFA: En lugar de dar el token, generamos un código
         const codigo = generarCodigoMfa();
-        
+
         // Lo guardamos temporalmente en la memoria del servidor (expira en 5 minutos)
         codigosMfa.set(correo, { codigo, expira: Date.now() + 5 * 60 * 1000 });
 
@@ -357,8 +355,8 @@ app.post('/api/login', validarCsrf, async (req, res) => {
         await enviarCodigoMfa(correo, codigo);
 
         // Le avisamos a React que necesitamos que muestre la pantalla del código
-        res.json({ 
-            mensaje: 'Código MFA enviado al correo', 
+        res.json({
+            mensaje: 'Código MFA enviado al correo',
             requiereMfa: true,
             codigoDemo: codigo // Se añadio ya que el servidor de render no puede enviar correos, así que para propósitos de desarrollo se envía el código en la respuesta. ¡Recuerda eliminar esto en producción!
             //te odio render
@@ -400,16 +398,16 @@ app.post('/api/login/verificar-mfa', validarCsrf, async (req, res) => {
 
         const token = jwt.sign(
             { id_usuario: usuario.id_usuario, correo: usuario.correo },
-            process.env.JWT_SECRET || 'secreto_temporal_de_desarrollo_cambiar_luego', 
+            process.env.JWT_SECRET || 'secreto_temporal_de_desarrollo_cambiar_luego',
             { expiresIn: '2h' }
         );
 
         // cookieConfig
         res.cookie('auth_token', token, cookieConfig);
 
-        res.json({ 
-            mensaje: 'Autenticación exitosa', 
-            esAdmin: esAdmin 
+        res.json({
+            mensaje: 'Autenticación exitosa',
+            esAdmin: esAdmin
         });
 
     } catch (error) {
@@ -427,11 +425,11 @@ const verificarAdmin = async (req, res, next) => {
         if (!token) return res.status(401).json({ error: 'Acceso denegado. Debes iniciar sesión.' });
 
         const decodificado = jwt.verify(token, process.env.JWT_SECRET);
-        
+
         const usuario = await prisma.usuario.findUnique({
             where: { id_usuario: decodificado.id_usuario },
             include: {
-                roles: {       
+                roles: {
                     include: { rol: true }
                 }
             }
@@ -443,7 +441,7 @@ const verificarAdmin = async (req, res, next) => {
         if (!esAdmin) return res.status(403).json({ error: 'Acceso denegado. Área exclusiva para Administradores.' });
 
         req.usuario = usuario;
-        next(); 
+        next();
 
     } catch (error) {
         console.error("Error en el middleware:", error);
@@ -457,7 +455,7 @@ const verificarUsuario = async (req, res, next) => {
 
         const decodificado = jwt.verify(token, process.env.JWT_SECRET || 'secreto_temporal_de_desarrollo_cambiar_luego');
         req.usuario = decodificado; // Aquí guardamos el ID para usarlo en la ruta
-        next(); 
+        next();
     } catch (error) {
         res.status(401).json({ error: 'Token inválido o expirado.' });
     }
@@ -479,7 +477,7 @@ app.get('/api/dashboard/estadisticas', verificarAdmin, async (req, res) => {
 
 const ALGORITMO = 'aes-256-cbc';
 // Clave maestra de 32 bytes. En una empresa real, esto va en el .env
-const CLAVE_SECRETA = process.env.ENCRYPTION_KEY || 'CampanitaSecreta1234567890123456'; 
+const CLAVE_SECRETA = process.env.ENCRYPTION_KEY || 'CampanitaSecreta1234567890123456';
 
 const encriptarAES = (texto) => {
     const iv = crypto.randomBytes(16); // Vector de inicialización (añade aleatoriedad)
@@ -487,7 +485,7 @@ const encriptarAES = (texto) => {
     let encriptado = cipher.update(texto, 'utf8', 'hex');
     encriptado += cipher.final('hex');
     // Guardamos el IV junto con el texto para saber cómo abrirlo después
-    return iv.toString('hex') + ':' + encriptado; 
+    return iv.toString('hex') + ':' + encriptado;
 };
 
 const desencriptarAES = (textoEncriptado) => {
@@ -505,7 +503,7 @@ app.post('/api/perfil/telefono', validarCsrf, verificarUsuario, async (req, res)
     const { telefono } = req.body;
     try {
         const telefonoEncriptado = encriptarAES(telefono);
-        
+
         await prisma.usuario.update({
             where: { id_usuario: req.usuario.id_usuario },
             data: { telefono_secreto: telefonoEncriptado }
@@ -535,7 +533,7 @@ app.get('/api/perfil/telefono', verificarUsuario, async (req, res) => {
         }
 
         const telefonoDesencriptado = desencriptarAES(usuarioBD.telefono_secreto);
-        
+
         console.log(`\n--- DEMOSTRACIÓN DE DESENCRIPTADO ---`);
         console.log(`🔓 Extraído de Aiven: ${usuarioBD.telefono_secreto}`);
         console.log(`📱 Desencriptado a: ${telefonoDesencriptado}`);
@@ -555,8 +553,8 @@ const generarFirma = (datos) => {
     // Convertimos los datos a un string JSON ordenado para que la firma sea consistente
     const stringDatos = JSON.stringify(datos);
     return crypto.createHmac('sha256', CLAVE_FIRMA)
-                 .update(stringDatos)
-                 .digest('hex');
+        .update(stringDatos)
+        .digest('hex');
 };
 
 const verificarFirma = (datos, firmaRecibida) => {
@@ -569,79 +567,79 @@ const verificarFirma = (datos, firmaRecibida) => {
 // ==========================================
 
 app.get('/roles', async (req, res) => {
-  try { res.json(await prisma.rol.findMany()); } 
-  catch (error) { res.status(500).json({ error: "Error de BD" }); }
+    try { res.json(await prisma.rol.findMany()); }
+    catch (error) { res.status(500).json({ error: "Error de BD" }); }
 });
 
 app.get('/usuarios', async (req, res) => {
-  try { res.json(await prisma.usuario.findMany()); } 
-  catch (error) { res.status(500).json({ error: "Error al obtener usuarios" }); }
+    try { res.json(await prisma.usuario.findMany()); }
+    catch (error) { res.status(500).json({ error: "Error al obtener usuarios" }); }
 });
 
 app.get('/personajes', async (req, res) => {
-  try { res.json(await prisma.personaje.findMany()); } 
-  catch (error) { res.status(500).json({ error: "Error al obtener personajes" }); }
+    try { res.json(await prisma.personaje.findMany()); }
+    catch (error) { res.status(500).json({ error: "Error al obtener personajes" }); }
 });
 
 app.get('/galeria', async (req, res) => {
-  try { res.json(await prisma.galeria.findMany()); } 
-  catch (error) { res.status(500).json({ error: "Error al obtener la galería" }); }
+    try { res.json(await prisma.galeria.findMany()); }
+    catch (error) { res.status(500).json({ error: "Error al obtener la galería" }); }
 });
 
 // NUNVA RUTA PÚBLICA DE MAPAS
 app.get('/mapas', async (req, res) => {
-  try { res.json(await prisma.mapa.findMany()); } 
-  catch (error) { res.status(500).json({ error: "Error al obtener mapas" }); }
+    try { res.json(await prisma.mapa.findMany()); }
+    catch (error) { res.status(500).json({ error: "Error al obtener mapas" }); }
 });
 
 // --- NOTICIAS PÚBLICAS ---
 app.get('/noticias', async (req, res) => {
-  try { 
-    const noticias = await prisma.noticia.findMany({
-      orderBy: { fecha_publicacion: 'desc' }
-    });
-    res.json(noticias); 
-  } catch (error) { res.status(500).json({ error: "Error al obtener noticias" }); }
+    try {
+        const noticias = await prisma.noticia.findMany({
+            orderBy: { fecha_publicacion: 'desc' }
+        });
+        res.json(noticias);
+    } catch (error) { res.status(500).json({ error: "Error al obtener noticias" }); }
 });
 
 app.get('/noticias/:id', async (req, res) => {
-  try { 
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
-    const noticia = await prisma.noticia.findUnique({ where: { id_noticia: id } });
-    if (!noticia) return res.status(404).json({ error: "Noticia no encontrada" });
-    res.json(noticia); 
-  } catch (error) { res.status(500).json({ error: "Error al obtener la noticia" }); }
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id)) return res.status(400).json({ error: "ID inválido" });
+        const noticia = await prisma.noticia.findUnique({ where: { id_noticia: id } });
+        if (!noticia) return res.status(404).json({ error: "Noticia no encontrada" });
+        res.json(noticia);
+    } catch (error) { res.status(500).json({ error: "Error al obtener la noticia" }); }
 });
 
 // ==========================================
 // ENDPOINT PARA SUBIR MODELOS 3D E IMÁGENES
 // ==========================================
 app.post('/api/admin/upload', verificarAdmin, upload.single('archivo'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No se envió ningún archivo.' });
-    }
-    const filename = req.file.filename;
-    
-    // Si estamos en local y existe la carpeta del frontend, copiar el archivo allá también
-    if (fs.existsSync(uploadDirFrontend)) {
-      try {
-        fs.copyFileSync(req.file.path, path.join(uploadDirFrontend, filename));
-      } catch (e) { console.error('No se pudo copiar al frontend local:', e); }
-    }
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No se envió ningún archivo.' });
+        }
+        const filename = req.file.filename;
 
-    // Construir URL pública para acceder al archivo
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const host = req.get('host');
-    const urlArchivo = `${protocol}://${host}/modelos3d/${filename}`;
+        // Si estamos en local y existe la carpeta del frontend, copiar el archivo allá también
+        if (fs.existsSync(uploadDirFrontend)) {
+            try {
+                fs.copyFileSync(req.file.path, path.join(uploadDirFrontend, filename));
+            } catch (e) { console.error('No se pudo copiar al frontend local:', e); }
+        }
 
-    console.log(`✅ Archivo subido exitosamente: ${urlArchivo}`);
-    res.json({ url: urlArchivo, filename });
-  } catch (error) {
-    console.error('Error al subir archivo:', error);
-    res.status(500).json({ error: 'Error al procesar la subida del archivo.' });
-  }
+        // Construir URL pública para acceder al archivo
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+        const host = req.get('host');
+        const urlArchivo = `${protocol}://${host}/modelos3d/${filename}`;
+
+        console.log(`✅ Archivo subido exitosamente: ${urlArchivo}`);
+        res.json({ url: urlArchivo, filename });
+    } catch (error) {
+        console.error('Error al subir archivo:', error);
+        res.status(500).json({ error: 'Error al procesar la subida del archivo.' });
+    }
 });
 
 // ==========================================
@@ -656,8 +654,8 @@ app.post('/api/admin/personajes', verificarAdmin, async (req, res) => {
         const datosParaFirmar = { nombre, descripcion, imagen_url };
         const firma = generarFirma(datosParaFirmar);
 
-        const nuevo = await prisma.personaje.create({ 
-            data: { nombre, descripcion, imagen_url, firma_digital: firma } 
+        const nuevo = await prisma.personaje.create({
+            data: { nombre, descripcion, imagen_url, firma_digital: firma }
         });
 
         console.log(`✅ Personaje firmado. Sello: ${firma}`);
@@ -720,17 +718,17 @@ app.post('/api/admin/noticias', verificarAdmin, async (req, res) => {
         return res.status(400).json({ error: "El título no puede exceder los 150 caracteres" });
     }
     try {
-        const nueva = await prisma.noticia.create({ 
-            data: { 
-                titulo: titulo.trim(), 
-                contenido: contenido.trim(), 
-                imagen_url: imagen_url ? imagen_url.trim() : null 
-            } 
+        const nueva = await prisma.noticia.create({
+            data: {
+                titulo: titulo.trim(),
+                contenido: contenido.trim(),
+                imagen_url: imagen_url ? imagen_url.trim() : null
+            }
         });
         res.json(nueva);
-    } catch (e) { 
+    } catch (e) {
         console.error("Error en POST noticias:", e);
-        res.status(500).json({ error: "Error al crear la noticia" }); 
+        res.status(500).json({ error: "Error al crear la noticia" });
     }
 });
 
@@ -747,16 +745,16 @@ app.put('/api/admin/noticias/:id', verificarAdmin, async (req, res) => {
     try {
         const actualizada = await prisma.noticia.update({
             where: { id_noticia: id },
-            data: { 
-                titulo: titulo.trim(), 
-                contenido: contenido.trim(), 
-                imagen_url: imagen_url ? imagen_url.trim() : null 
+            data: {
+                titulo: titulo.trim(),
+                contenido: contenido.trim(),
+                imagen_url: imagen_url ? imagen_url.trim() : null
             }
         });
         res.json(actualizada);
-    } catch (e) { 
+    } catch (e) {
         console.error("Error en PUT noticias:", e);
-        res.status(500).json({ error: "Error al actualizar la noticia" }); 
+        res.status(500).json({ error: "Error al actualizar la noticia" });
     }
 });
 
@@ -772,5 +770,5 @@ app.delete('/api/admin/noticias/:id', verificarAdmin, async (req, res) => {
 // ==========================================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Servidor blindado corriendo en el puerto ${PORT}`);
+    console.log(`Servidor blindado corriendo en el puerto ${PORT}`);
 });
