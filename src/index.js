@@ -67,7 +67,9 @@ const cookieConfig = {
 // ==========================================
 
 // [RÚBRICA: Encabezados de seguridad para prevenir XSS, CSRF (X-Frame-Options, Content-Security-Policy, etc.)] (10 puntos)
-app.use(helmet());
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 
 // [RÚBRICA: Encabezados de seguridad: Access-Control-Allow-Origin] (Parte de los 10 puntos)
 app.use(cors({
@@ -87,7 +89,7 @@ const uploadDirBackend = path.join(__dirname, '../public/modelos3d');
 if (!fs.existsSync(uploadDirBackend)) {
   fs.mkdirSync(uploadDirBackend, { recursive: true });
 }
-const uploadDirFrontend = path.join(__dirname, '../../CampanitaWebFront/CampanitaWebFront/public/modelos3d');
+const uploadDirFrontend = path.join(__dirname, '../../CampanitaWebFront/public/modelos3d');
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
