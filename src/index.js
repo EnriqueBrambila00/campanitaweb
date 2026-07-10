@@ -67,14 +67,14 @@ const cookieConfig = {
 // ==========================================
 
 // [RÚBRICA: Encabezados de seguridad para prevenir XSS, CSRF (X-Frame-Options, Content-Security-Policy, etc.)] (10 puntos)
-app.use(helmet());
+app.use(helmet({
+    crossOriginResourcePolicy: false,
+    crossOriginEmbedderPolicy: false
+}));
 
 // [RÚBRICA: Encabezados de seguridad: Access-Control-Allow-Origin] (Parte de los 10 puntos)
 app.use(cors({
-    origin: [
-        'http://localhost:5173',
-        'https://campanitatecnm.onrender.com'
-    ],
+    origin: true,
     credentials: true
 }));
 
@@ -104,8 +104,12 @@ const upload = multer({
     limits: { fileSize: 50 * 1024 * 1024 } // 50MB max para modelos 3D
 });
 
-// Servir de forma estática la carpeta de modelos 3D
-app.use('/modelos3d', express.static(uploadDirBackend));
+// Servir de forma estática la carpeta de modelos 3D y fotos subidas
+app.use('/modelos3d', (req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+}, express.static(uploadDirBackend));
 
 // ==========================================
 // TOKEN CSRF PARA FORMULARIOS LOGIN / REGISTRO
