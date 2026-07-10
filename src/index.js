@@ -72,6 +72,7 @@ app.use(helmet({
     crossOriginEmbedderPolicy: false
 }));
 
+
 // [RÚBRICA: Encabezados de seguridad: Access-Control-Allow-Origin] (Parte de los 10 puntos)
 app.use(cors({
     origin: true,
