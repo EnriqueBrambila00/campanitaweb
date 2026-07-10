@@ -987,8 +987,19 @@ app.delete('/api/admin/usuarios/:id', verificarAdmin, async (req, res) => {
 });
 
 // ==========================================
-// ARRANQUE DEL SERVIDOR
+// ARRANQUE DEL SERVIDOR Y SINCRONIZACIÓN BD
 // ==========================================
+if (process.env.DATABASE_URL) {
+    try {
+        const { execSync } = require('child_process');
+        console.log('🔄 Sincronizando estructura de base de datos en Aiven.io con Prisma...');
+        execSync('npx prisma db push --accept-data-loss', { stdio: 'inherit' });
+        console.log('✅ Base de datos Aiven.io sincronizada correctamente.');
+    } catch (err) {
+        console.warn('⚠️ Nota al sincronizar BD:', err.message);
+    }
+}
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Servidor blindado corriendo en el puerto ${PORT}`);
