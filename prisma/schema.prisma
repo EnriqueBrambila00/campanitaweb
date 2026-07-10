@@ -17,6 +17,7 @@ model Usuario {
   contrasena       String           @db.VarChar(255)
   telefono_secreto String?
   fecha_nacimiento DateTime?        @db.Date
+  gamertag         String?          @db.VarChar(50)
   fecha_registro   DateTime         @default(now())
   estado_cuenta    EstadoCuenta     @default(activo)
   roles            UsuariosRoles[]
@@ -27,6 +28,7 @@ model Usuario {
 enum EstadoCuenta {
   activo
   suspendido
+  baneado
 }
 
 model Rol {

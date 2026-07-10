@@ -544,6 +544,116 @@ app.get('/api/perfil/telefono', verificarUsuario, async (req, res) => {
         res.status(500).json({ error: 'Error al procesar el dato sensible' });
     }
 });
+
+// 3. Obtener perfil completo del usuario
+app.get('/api/perfil', verificarUsuario, async (req, res) => {
+    try {
+        const usuarioBD = await prisma.usuario.findUnique({
+            where: { id_usuario: req.usuario.id_usuario },
+            include: { roles: { include: { rol: true } } }
+        });
+        if (!usuarioBD) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+        let telefonoDesencriptado = null;
+        if (usuarioBD.telefono_secreto) {
+            try {
+                telefonoDesencriptado = desencriptarAES(usuarioBD.telefono_secreto);
+            } catch (e) {
+                telefonoDesencriptado = usuarioBD.telefono_secreto;
+            }
+        }
+
+        res.json({
+            id_usuario: usuarioBD.id_usuario,
+            nombre_usuario: usuarioBD.nombre_usuario,
+            correo: usuarioBD.correo,
+            fecha_registro: usuarioBD.fecha_registro,
+            estado_cuenta: usuarioBD.estado_cuenta,
+            telefono: telefonoDesencriptado || '',
+            fecha_nacimiento: usuarioBD.fecha_nacimiento ? usuarioBD.fecha_nacimiento.toISOString().split('T')[0] : '',
+            gamertag: usuarioBD.gamertag || '',
+            roles: usuarioBD.roles.map(r => r.rol.nombre_rol)
+        });
+    } catch (error) {
+        console.error('Error al obtener perfil completo:', error);
+        res.status(500).json({ error: 'Error al obtener perfil del usuario' });
+    }
+});
+
+// 4. Actualizar perfil completo (teléfono cifrado, fecha de nacimiento, gamertag)
+app.put('/api/perfil', validarCsrf, verificarUsuario, async (req, res) => {
+    const { telefono, fecha_nacimiento, gamertag } = req.body;
+    try {
+        if (gamertag && gamertag.length > 15) {
+            return res.status(400).json({ error: 'El Gamertag no puede exceder los 15 caracteres.' });
+        }
+
+        let fechaNac = undefined;
+        if (fecha_nacimiento) {
+            const fechaInput = new Date(fecha_nacimiento);
+            const hoy = new Date();
+            if (fechaInput > hoy) {
+                return res.status(400).json({ error: 'La fecha de nacimiento no puede ser una fecha futura.' });
+            }
+            fechaNac = fechaInput;
+        }
+
+        const dataUpdate = {};
+        if (gamertag !== undefined) dataUpdate.gamertag = gamertag || null;
+        if (fechaNac !== undefined) dataUpdate.fecha_nacimiento = fechaNac;
+
+        if (telefono !== undefined && telefono !== null && telefono.trim() !== '') {
+            const telefonoEncriptado = encriptarAES(telefono);
+            dataUpdate.telefono_secreto = telefonoEncriptado;
+            console.log(`\n--- PROTECCIÓN DE DATOS DEL PERFIL ---`);
+            console.log(`🔒 Teléfono original: ${telefono}`);
+            console.log(`🔏 Guardado cifrado: ${telefonoEncriptado}`);
+            console.log(`--------------------------------------\n`);
+        }
+
+        const usuarioActualizado = await prisma.usuario.update({
+            where: { id_usuario: req.usuario.id_usuario },
+            data: dataUpdate
+        });
+
+        res.json({ mensaje: 'Perfil actualizado y protegido con éxito', usuario: usuarioActualizado });
+    } catch (error) {
+        console.error('Error al actualizar perfil:', error);
+        res.status(500).json({ error: 'Error al actualizar el perfil' });
+    }
+});
+
+app.put('/api/perfil/gamertag', validarCsrf, verificarUsuario, async (req, res) => {
+    const { gamertag } = req.body;
+    if (gamertag && gamertag.length > 15) {
+        return res.status(400).json({ error: 'El Gamertag no puede exceder los 15 caracteres.' });
+    }
+    try {
+        await prisma.usuario.update({
+            where: { id_usuario: req.usuario.id_usuario },
+            data: { gamertag: gamertag || null }
+        });
+        res.json({ mensaje: 'Gamertag actualizado' });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al actualizar Gamertag' });
+    }
+});
+
+app.put('/api/perfil/fecha-nacimiento', validarCsrf, verificarUsuario, async (req, res) => {
+    const { fecha_nacimiento } = req.body;
+    if (fecha_nacimiento && new Date(fecha_nacimiento) > new Date()) {
+        return res.status(400).json({ error: 'La fecha de nacimiento no puede ser futura.' });
+    }
+    try {
+        await prisma.usuario.update({
+            where: { id_usuario: req.usuario.id_usuario },
+            data: { fecha_nacimiento: fecha_nacimiento ? new Date(fecha_nacimiento) : null }
+        });
+        res.json({ mensaje: 'Fecha de nacimiento actualizada' });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al actualizar fecha de nacimiento' });
+    }
+});
 // ==========================================
 // PUNTO 4: FIRMAS DIGITALES (HMAC-SHA256)
 // ==========================================
@@ -763,6 +873,112 @@ app.delete('/api/admin/noticias/:id', verificarAdmin, async (req, res) => {
         await prisma.noticia.delete({ where: { id_noticia: parseInt(req.params.id) } });
         res.json({ mensaje: "Noticia eliminada" });
     } catch (e) { res.status(500).json({ error: "Error al borrar noticia" }); }
+});
+
+// ==========================================
+// GESTIÓN ADMINISTRATIVA DE USUARIOS (CRUD)
+// ==========================================
+app.get('/api/admin/usuarios', verificarAdmin, async (req, res) => {
+    try {
+        const usuarios = await prisma.usuario.findMany({
+            include: {
+                roles: {
+                    include: { rol: true }
+                }
+            },
+            orderBy: { fecha_registro: 'desc' }
+        });
+
+        const usuariosFormateados = usuarios.map(u => {
+            let telefonoDes = null;
+            if (u.telefono_secreto) {
+                try {
+                    telefonoDes = desencriptarAES(u.telefono_secreto);
+                } catch (e) {
+                    telefonoDes = u.telefono_secreto;
+                }
+            }
+            return {
+                id_usuario: u.id_usuario,
+                nombre_usuario: u.nombre_usuario,
+                correo: u.correo,
+                gamertag: u.gamertag || '',
+                telefono: telefonoDes || '',
+                fecha_nacimiento: u.fecha_nacimiento ? u.fecha_nacimiento.toISOString().split('T')[0] : '',
+                fecha_registro: u.fecha_registro,
+                estado_cuenta: u.estado_cuenta,
+                roles: u.roles.map(r => r.rol.nombre_rol)
+            };
+        });
+
+        res.json(usuariosFormateados);
+    } catch (e) {
+        console.error("Error al obtener usuarios admin:", e);
+        res.status(500).json({ error: "Error al obtener usuarios" });
+    }
+});
+
+app.put('/api/admin/usuarios/:id', verificarAdmin, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const { nombre_usuario, correo, gamertag, fecha_nacimiento, estado_cuenta } = req.body;
+    try {
+        const dataUpdate = {};
+        if (nombre_usuario !== undefined) dataUpdate.nombre_usuario = nombre_usuario;
+        if (correo !== undefined) dataUpdate.correo = correo;
+        if (gamertag !== undefined) dataUpdate.gamertag = gamertag || null;
+        if (fecha_nacimiento !== undefined) dataUpdate.fecha_nacimiento = fecha_nacimiento ? new Date(fecha_nacimiento) : null;
+        if (estado_cuenta !== undefined) dataUpdate.estado_cuenta = estado_cuenta;
+
+        const actualizado = await prisma.usuario.update({
+            where: { id_usuario: id },
+            data: dataUpdate
+        });
+        res.json(actualizado);
+    } catch (e) {
+        console.error("Error al actualizar usuario admin:", e);
+        res.status(500).json({ error: "Error al actualizar usuario" });
+    }
+});
+
+app.put('/api/admin/usuarios/:id/banear', verificarAdmin, async (req, res) => {
+    const id = parseInt(req.params.id);
+    try {
+        const ban = await prisma.usuario.update({
+            where: { id_usuario: id },
+            data: { estado_cuenta: 'baneado' }
+        });
+        res.json({ mensaje: "Usuario baneado correctamente", usuario: ban });
+    } catch (e) {
+        console.error("Error al banear usuario:", e);
+        res.status(500).json({ error: "Error al banear usuario" });
+    }
+});
+
+app.put('/api/admin/usuarios/:id/reactivar', verificarAdmin, async (req, res) => {
+    const id = parseInt(req.params.id);
+    try {
+        const reactivar = await prisma.usuario.update({
+            where: { id_usuario: id },
+            data: { estado_cuenta: 'activo' }
+        });
+        res.json({ mensaje: "Usuario reactivado correctamente", usuario: reactivar });
+    } catch (e) {
+        console.error("Error al reactivar usuario:", e);
+        res.status(500).json({ error: "Error al reactivar usuario" });
+    }
+});
+
+app.delete('/api/admin/usuarios/:id', verificarAdmin, async (req, res) => {
+    const id = parseInt(req.params.id);
+    try {
+        await prisma.usuario.delete({
+            where: { id_usuario: id }
+        });
+        res.json({ mensaje: "Usuario eliminado correctamente" });
+    } catch (e) {
+        console.error("Error al eliminar usuario:", e);
+        res.status(500).json({ error: "Error al eliminar usuario" });
+    }
 });
 
 // ==========================================
