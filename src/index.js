@@ -277,10 +277,10 @@ app.get('/api/auth/google/callback', async (req, res) => {
         res.cookie('auth_token', token, cookieConfig);
 
         if (esAdmin) {
-            return res.redirect(`${FRONTEND_URL}/dashboard?oauth=google`);
+            return res.redirect(`${FRONTEND_URL}/dashboard?oauth=google&token=${token}`);
         }
 
-        return res.redirect(`${FRONTEND_URL}/?oauth=google`);
+        return res.redirect(`${FRONTEND_URL}/?oauth=google&token=${token}`);
 
     } catch (error) {
         console.error('Error en OAuth Google:', error);
@@ -412,7 +412,8 @@ app.post('/api/login/verificar-mfa', validarCsrf, async (req, res) => {
 
         res.json({
             mensaje: 'Autenticación exitosa',
-            esAdmin: esAdmin
+            esAdmin: esAdmin,
+            token: token
         });
 
     } catch (error) {
@@ -426,10 +427,14 @@ app.post('/api/login/verificar-mfa', validarCsrf, async (req, res) => {
 // ==========================================
 const verificarAdmin = async (req, res, next) => {
     try {
-        const token = req.cookies.auth_token;
+        const tokenCookie = req.cookies.auth_token;
+        const tokenHeader = req.headers.authorization && req.headers.authorization.split(' ')[1];
+        const tokenXAuth = req.headers['x-auth-token'];
+        const token = tokenCookie || tokenHeader || tokenXAuth;
+
         if (!token) return res.status(401).json({ error: 'Acceso denegado. Debes iniciar sesión.' });
 
-        const decodificado = jwt.verify(token, process.env.JWT_SECRET);
+        const decodificado = jwt.verify(token, process.env.JWT_SECRET || 'secreto_temporal_de_desarrollo_cambiar_luego');
 
         const usuario = await prisma.usuario.findUnique({
             where: { id_usuario: decodificado.id_usuario },
@@ -455,7 +460,11 @@ const verificarAdmin = async (req, res, next) => {
 };
 const verificarUsuario = async (req, res, next) => {
     try {
-        const token = req.cookies.auth_token;
+        const tokenCookie = req.cookies.auth_token;
+        const tokenHeader = req.headers.authorization && req.headers.authorization.split(' ')[1];
+        const tokenXAuth = req.headers['x-auth-token'];
+        const token = tokenCookie || tokenHeader || tokenXAuth;
+
         if (!token) return res.status(401).json({ error: 'Acceso denegado. Debes iniciar sesión.' });
 
         const decodificado = jwt.verify(token, process.env.JWT_SECRET || 'secreto_temporal_de_desarrollo_cambiar_luego');
