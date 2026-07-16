@@ -474,14 +474,22 @@ app.post('/api/login/verificar-mfa', validarCsrf, async (req, res) => {
 });
 
 // ==========================================
+// ENDPOINT DE CERRAR SESIÓN (LOGOUT)
+// ==========================================
+app.post('/api/logout', (req, res) => {
+    res.clearCookie('auth_token', cookieConfig);
+    res.json({ mensaje: 'Sesión cerrada y cookie eliminada con éxito' });
+});
+
+// ==========================================
 // MIDDLEWARES DE AUTENTICACIÓN Y ROLES
 // ==========================================
 const verificarAdmin = async (req, res, next) => {
     try {
-        const tokenCookie = req.cookies.auth_token;
         const tokenHeader = req.headers.authorization && req.headers.authorization.split(' ')[1];
         const tokenXAuth = req.headers['x-auth-token'];
-        const token = tokenCookie || tokenHeader || tokenXAuth;
+        const tokenCookie = req.cookies.auth_token;
+        const token = tokenHeader || tokenXAuth || tokenCookie;
 
         if (!token) return res.status(401).json({ error: 'Acceso denegado. Debes iniciar sesión.' });
 
@@ -511,10 +519,10 @@ const verificarAdmin = async (req, res, next) => {
 };
 const verificarUsuario = async (req, res, next) => {
     try {
-        const tokenCookie = req.cookies.auth_token;
         const tokenHeader = req.headers.authorization && req.headers.authorization.split(' ')[1];
         const tokenXAuth = req.headers['x-auth-token'];
-        const token = tokenCookie || tokenHeader || tokenXAuth;
+        const tokenCookie = req.cookies.auth_token;
+        const token = tokenHeader || tokenXAuth || tokenCookie;
 
         if (!token) return res.status(401).json({ error: 'Acceso denegado. Debes iniciar sesión.' });
 
