@@ -33,13 +33,65 @@ const generarCodigoMfa = () => {
 };
 
 const enviarCodigoMfa = async (correo, codigo) => {
-
     console.log(`\n=========================================`);
     console.log(`🔑 CÓDIGO MFA PARA ${correo}: ${codigo}`);
     console.log(`=========================================\n`);
 
-    // Simulamos que el sistema tardó 1 segundo en "enviar" el correo
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // 1. Envío por Resend (API REST por HTTPS / Puerto 443 - Inmune a bloqueos de Render)
+    if (process.env.RESEND_API_KEY) {
+        try {
+            const res = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    from: process.env.RESEND_FROM || 'La Campanita <onboarding@resend.dev>',
+                    to: correo,
+                    subject: '🔑 Tu código de verificación MFA - La Campanita',
+                    html: `
+                        <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; background-color: #1B396A; color: #ffffff; border-radius: 12px; border: 2px solid #FFD51A; text-align: center;">
+                            <h2 style="color: #FFD51A; font-size: 24px; margin-bottom: 10px;">🛡️ Verificación de Seguridad</h2>
+                            <p style="font-size: 16px; color: #e2e8f0; margin-bottom: 25px;">Usa el siguiente código de 6 dígitos para iniciar sesión en <strong>La Campanita</strong>:</p>
+                            <div style="background-color: #FFD51A; color: #1B396A; font-size: 32px; font-weight: bold; letter-spacing: 8px; padding: 15px 25px; border-radius: 8px; display: inline-block; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+                                ${codigo}
+                            </div>
+                            <p style="font-size: 13px; color: #cbd5e1; margin-top: 15px;">Este código expirará en <strong>5 minutos</strong>. Si no solicitaste este acceso, puedes ignorar este mensaje.</p>
+                            <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.2); margin: 20px 0;">
+                            <p style="font-size: 11px; color: #94a3b8;">La Campanita &copy; ${new Date().getFullYear()} - Todos los derechos reservados.</p>
+                        </div>
+                    `
+                })
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+                console.log('✅ Correo MFA enviado exitosamente vía Resend HTTPS:', data);
+            } else {
+                console.error('⚠️ Error devuelto por la API de Resend:', data);
+            }
+        } catch (error) {
+            console.error('❌ Error de conexión al enviar con Resend:', error);
+        }
+    } else if (process.env.SMTP_HOST && process.env.SMTP_USER) {
+        // 2. Fallback a SMTP (Nodemailer) si se usa en desarrollo local
+        try {
+            await transporter.sendMail({
+                from: process.env.SMTP_USER,
+                to: correo,
+                subject: '🔑 Tu código de verificación MFA - La Campanita',
+                text: `Tu código para iniciar sesión en La Campanita es: ${codigo}`
+            });
+            console.log('✅ Correo MFA enviado con Nodemailer (local)');
+        } catch (err) {
+            console.error('❌ Error al enviar por Nodemailer/SMTP:', err.message);
+        }
+    } else {
+        // 3. Modo desarrollo sin claves de correo
+        console.log('ℹ️ No se detectó RESEND_API_KEY. Simulando envío en consola.');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
 };
 
 const prisma = new PrismaClient({
@@ -363,8 +415,7 @@ app.post('/api/login', validarCsrf, async (req, res) => {
         res.json({
             mensaje: 'Código MFA enviado al correo',
             requiereMfa: true,
-            codigoDemo: codigo // Se añadio ya que el servidor de render no puede enviar correos, así que para propósitos de desarrollo se envía el código en la respuesta. ¡Recuerda eliminar esto en producción!
-            //te odio render
+            codigoDemo: process.env.RESEND_API_KEY ? undefined : codigo // Si RESEND_API_KEY está configurada en Render, no exponemos el código demo y el usuario revisará su correo. Si no hay API key (local), se muestra el código.
         });
 
     } catch (error) {
