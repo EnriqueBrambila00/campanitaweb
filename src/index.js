@@ -408,8 +408,8 @@ app.post('/api/login', validarCsrf, async (req, res) => {
         // Lo guardamos temporalmente en la memoria del servidor (expira en 5 minutos)
         codigosMfa.set(correo, { codigo, expira: Date.now() + 5 * 60 * 1000 });
 
-        // Enviamos el correo al usuario
-        await enviarCodigoMfa(correo, codigo);
+        // Enviamos el correo al usuario en segundo plano para que el login responda al instante (cero demoras)
+        enviarCodigoMfa(correo, codigo).catch(err => console.error('Error enviando correo MFA:', err));
 
         // Le avisamos a React que necesitamos que muestre la pantalla del código
         res.json({
